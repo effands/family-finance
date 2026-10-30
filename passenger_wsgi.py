@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, quote_plus, unquote_plus, urlencode
 from urllib.request import Request, urlopen
 
 from src.categorizer import categorize
+from src.bot_control import BotController
 from src.config import load_settings
 from src.database import Database
 from src.export_report import generate_excel, generate_pdf
@@ -475,6 +476,11 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
     except Exception:
         pass
     last_git_update = db.get_setting("last_git_update", "") or "Belum pernah dilakukan pembaruan dari dasbor web."
+    bot_controller = BotController(os.path.dirname(os.path.abspath(__file__)))
+    bot_status = bot_controller.status()
+    bot_status_label = "Aktif / Online" if bot_status.running else "Mati / Offline"
+    bot_status_class = "active" if bot_status.running else "inactive"
+    bot_status_detail = f"PID {bot_status.pid}" if bot_status.pid else "Worker Telegram belum berjalan"
 
     cat_rows = []
     for c in categories:
@@ -693,6 +699,26 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
 
   <!-- TAB 4: INFO SISTEM & TELEGRAM -->
   <div id="tab-content-system" style="display: {'block' if active_tab == 'system' else 'none'};">
+    <section class="settings-section-card" style="margin-bottom: 24px;">
+      <div class="settings-section-header">
+        <div>
+          <h2 class="settings-section-title">Kontrol Bot Telegram</h2>
+          <p class="settings-section-desc">Nyalakan, matikan, atau restart bot langsung dari sini tanpa membuka Terminal hosting.</p>
+        </div>
+        <div class="status-callout {bot_status_class}" style="margin:0; min-width:210px;">
+          <span class="status-dot"></span>
+          <div><strong>{bot_status_label}</strong><div style="font-size:12px; margin-top:2px;">{bot_status_detail}</div></div>
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <form method="post" action="/keuangan/settings/bot/start"><button class="btn btn-primary" type="submit">▶️ Nyalakan Bot</button></form>
+        <form method="post" action="/keuangan/settings/bot/restart"><button class="btn btn-secondary" type="submit">🔄 Restart Bot</button></form>
+        <form method="post" action="/keuangan/settings/bot/stop" onsubmit="return confirm('Matikan bot Telegram sekarang?')"><button class="btn btn-danger" type="submit">⏹️ Matikan Bot</button></form>
+        <a class="btn btn-ghost" href="/keuangan/settings?tab=system">↻ Cek Status</a>
+      </div>
+      <p class="setting-help-text" style="margin-top:12px;">Bot yang dimatikan tidak akan membaca pesan atau foto baru di Telegram. Auto-start setelah restart server tetap aktif.</p>
+    </section>
+
     <section class="settings-section-card" style="margin-bottom: 24px;">
       <div class="settings-section-header">
         <div>
@@ -1096,6 +1122,25 @@ def _dashboard_response(environ, start_response):
         )
         return [b""]
 
+    # SETTINGS: Telegram bot process controls
+    if path.endswith("/settings/bot/start") and environ.get("REQUEST_METHOD") == "POST":
+        status = BotController(os.path.dirname(os.path.abspath(__file__))).start()
+        toast = "bot_started" if status.running else "bot_error"
+        start_response("303 See Other", [("Location", f"/keuangan/settings?tab=system&toast={toast}")])
+        return [b""]
+
+    if path.endswith("/settings/bot/stop") and environ.get("REQUEST_METHOD") == "POST":
+        status = BotController(os.path.dirname(os.path.abspath(__file__))).stop()
+        toast = "bot_stopped" if not status.running else "bot_error"
+        start_response("303 See Other", [("Location", f"/keuangan/settings?tab=system&toast={toast}")])
+        return [b""]
+
+    if path.endswith("/settings/bot/restart") and environ.get("REQUEST_METHOD") == "POST":
+        status = BotController(os.path.dirname(os.path.abspath(__file__))).restart()
+        toast = "bot_started" if status.running else "bot_error"
+        start_response("303 See Other", [("Location", f"/keuangan/settings?tab=system&toast={toast}")])
+        return [b""]
+
     # SETTINGS: System Update via Git Pull (VPS / Server Auto-Update)
     if path.endswith("/settings/system/update") and environ.get("REQUEST_METHOD") == "POST":
         output_lines = []
@@ -1370,6 +1415,12 @@ def _dashboard_response(environ, start_response):
           </div>
           <button class="toast-close" onclick="dismissToast('main-toast')">&times;</button>
         </div>"""
+    elif toast_type == "bot_started":
+        toast_html = '<div class="toast toast-success" id="main-toast"><div class="toast-title">Bot Telegram Aktif</div><div class="toast-msg">Bot sudah dinyalakan dan siap membaca pesan grup.</div><button class="toast-close" onclick="dismissToast(\'main-toast\')">&times;</button></div>'
+    elif toast_type == "bot_stopped":
+        toast_html = '<div class="toast toast-success" id="main-toast"><div class="toast-title">Bot Telegram Dimatikan</div><div class="toast-msg">Bot tidak akan memproses pesan baru sampai dinyalakan kembali.</div><button class="toast-close" onclick="dismissToast(\'main-toast\')">&times;</button></div>'
+    elif toast_type == "bot_error":
+        toast_html = '<div class="toast toast-error" id="main-toast"><div class="toast-title">Kontrol Bot Gagal</div><div class="toast-msg">Proses bot belum berhasil dikendalikan. Buka tab Info Sistem untuk melihat statusnya.</div><button class="toast-close" onclick="dismissToast(\'main-toast\')">&times;</button></div>'
 
     # ROUTE: SETTINGS PAGE
     if path.endswith("/settings"):
@@ -2211,6 +2262,9 @@ def application(environ, start_response):
         "/settings/gemini/test",
         "/settings/password/save",
         "/settings/system/update",
+        "/settings/bot/start",
+        "/settings/bot/stop",
+        "/settings/bot/restart",
         "/excel",
         "/fullscreen",
         "/export.xlsx",
