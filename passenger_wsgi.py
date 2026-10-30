@@ -9,7 +9,7 @@ import hashlib
 import html
 from http.cookies import SimpleCookie
 from datetime import datetime
-from urllib.parse import urlencode
+from urllib.parse import urlencode, parse_qs
 from urllib.request import Request, urlopen
 
 from src.categorizer import categorize
@@ -68,7 +68,7 @@ def _dashboard_response(environ, start_response):
         if environ.get("REQUEST_METHOD") == "POST":
             length = int(environ.get("CONTENT_LENGTH") or 0)
             form = environ["wsgi.input"].read(length).decode()
-            password = form.split("password=", 1)[-1].split("&", 1)[0]
+            password = parse_qs(form).get("password", [""])[0]
             expected = os.environ.get("WEB_PASSWORD", "")
             if password == expected:
                 cookie = hashlib.sha256(expected.encode()).hexdigest()
