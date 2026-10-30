@@ -25,8 +25,22 @@ def _send_message(chat_id, text):
         pass
 
 
+def _set_webhook():
+    token = os.environ.get("BOT_TOKEN")
+    if not token:
+        return
+    body = urlencode({"url": "https://asistenq.com/family-finance/"}).encode()
+    req = Request(f"https://api.telegram.org/bot{token}/setWebhook", data=body, method="POST")
+    with urlopen(req, timeout=20):
+        pass
+
+
 def application(environ, start_response):
     if environ.get("REQUEST_METHOD") == "GET":
+        try:
+            _set_webhook()
+        except Exception:
+            pass
         payload = b"family-finance bot is online"
         start_response("200 OK", [("Content-Type", "text/plain"), ("Content-Length", str(len(payload)))])
         return [payload]
