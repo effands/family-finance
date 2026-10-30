@@ -521,6 +521,7 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
           </div>
         </div>"""
 
+    emoji_quick_buttons = "".join(f'<button type="button" class="btn btn-secondary btn-sm" onclick="setEmojiQuick(\\'{em}\\')">{em}</button>' for em in ['🍔','⛽','🏠','💊','📱','👶','👕','💰','📈','🎓','🚗','✈️','🎁','🐾','🛒','💳'])
     body = f"""<div class="toast-container">{toast_html}</div>
 
 <main class="page-shell">
@@ -800,7 +801,7 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
         <div class="form-group">
           <label style="font-size: 11.5px; color: var(--ink-muted); margin-bottom: 4px;">Pilihan Emoji Cepat:</label>
           <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-            {''.join(f'<button type="button" class="btn btn-secondary btn-sm" style="padding: 4px 8px; font-size: 15px;" onclick="setEmojiQuick(\'{em}\')">{em}</button>' for em in ['🍔','⛽','🏠','💊','📱','👶','👕','💰','📈','🎓','🚗','✈️','🎁','🐾','🛒','💳'])}
+            {emoji_quick_buttons}
           </div>
         </div>
 
