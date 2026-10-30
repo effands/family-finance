@@ -37,8 +37,10 @@ class GeminiKeyPool:
                 # Client dibuat dan ditutup per percobaan. SDK google-genai
                 # dapat mewarisi transport yang sudah tertutup jika object
                 # client disimpan/reused lintas request WSGI.
-                with genai.Client(api_key=key, http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_MS)) as client:
-                    response=client.models.generate_content(model=self.model, contents="Tes koneksi. Jawab OK.")
+                client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_MS))
+                response=client.models.generate_content(model=self.model, contents="Tes koneksi. Jawab OK.")
+                if hasattr(client, "close"):
+                    client.close()
                 if response and response.text: return True, "Koneksi berhasil."
             except Exception as exc: errors.append(str(exc))
         return False, " | ".join(errors)[:500] or "Tidak ada respons dari Gemini."
@@ -54,15 +56,17 @@ def extract_receipt(image_bytes: bytes, api_keys: tuple[str,...], model: str, po
     for key in pool.ordered():
         for attempt in range(2):
             try:
-                with genai.Client(api_key=key, http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_MS)) as client:
-                    response=client.models.generate_content(
-                        model=model,
-                        contents=[types.Part.from_bytes(data=image_bytes, mime_type=mime_type), PROMPT],
-                        config=types.GenerateContentConfig(
-                            response_mime_type="application/json",
-                            temperature=0,
-                        ),
-                    )
+                client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_MS))
+                response=client.models.generate_content(
+                    model=model,
+                    contents=[types.Part.from_bytes(data=image_bytes, mime_type=mime_type), PROMPT],
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0,
+                    ),
+                )
+                if hasattr(client, "close"):
+                    client.close()
                 return _clean_json(response.text or "")
             except Exception as exc:
                 last=exc
