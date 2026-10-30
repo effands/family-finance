@@ -1262,3 +1262,216 @@ a:hover {
     padding: 8px 10px;
   }
 }
+
+
+/* ==========================================================================
+   SETTINGS & CONFIGURATION MODULE STYLES
+   ========================================================================== */
+
+.header-nav-menu {
+  display: inline-flex;
+  align-items: center;
+  background-color: #f1f5f9;
+  padding: 4px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  gap: 4px;
+}
+
+.header-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  text-decoration: none;
+}
+
+.header-nav-link:hover {
+  color: var(--ink-primary);
+  background-color: rgba(255, 255, 255, 0.7);
+}
+
+.header-nav-link.active {
+  background-color: #ffffff;
+  color: var(--brand-primary);
+  box-shadow: var(--shadow-xs);
+}
+
+.settings-nav-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 12px;
+  overflow-x: auto;
+}
+
+.settings-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.settings-tab-btn:hover {
+  color: var(--ink-primary);
+  background-color: #ffffff;
+}
+
+.settings-tab-btn.active {
+  background-color: #ffffff;
+  color: var(--brand-primary);
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-xs);
+}
+
+.settings-section-card {
+  background-color: #ffffff;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 28px;
+  margin-bottom: 24px;
+}
+
+.settings-section-header {
+  margin-bottom: 22px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.settings-section-title {
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--ink-primary);
+  letter-spacing: -0.02em;
+}
+
+.settings-section-desc {
+  font-size: 13px;
+  color: var(--ink-muted);
+  margin-top: 4px;
+  max-width: 60ch;
+  line-height: 1.55;
+}
+
+.category-keywords-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 320px;
+}
+
+.keyword-badge {
+  display: inline-block;
+  background-color: var(--bg-surface-soft);
+  color: var(--ink-secondary);
+  border: 1px solid var(--border-subtle);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.api-input-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.api-input-wrap input {
+  padding-right: 70px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.api-reveal-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--brand-primary);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.api-reveal-btn:hover {
+  background-color: var(--brand-light);
+}
+
+.setting-help-text {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin-top: 5px;
+  line-height: 1.5;
+}
+
+.status-callout {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  margin-bottom: 20px;
+  border: 1px solid transparent;
+}
+
+.status-callout.active {
+  background-color: var(--income-surface);
+  border-color: var(--income-border);
+  color: var(--income-main);
+}
+
+.status-callout.inactive {
+  background-color: var(--amber-surface);
+  border-color: var(--amber-border);
+  color: var(--amber-main);
+}
+
+.info-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.info-table th, .info-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13.5px;
+  text-align: left;
+}
+
+.info-table th {
+  color: var(--ink-muted);
+  font-weight: 600;
+  width: 240px;
+}
+
+.info-table td {
+  color: var(--ink-primary);
+  font-weight: 500;
+}

@@ -1,8 +1,9 @@
 from datetime import date
+import hashlib
 
-from passenger_wsgi import _import_csv, _period_bounds, _safe_csv_value, _summary
+from passenger_wsgi import _get_active_password, _import_csv, _period_bounds, _safe_csv_value, _summary
 from src.database import Database
-from src.models import Transaction
+from src.models import Category, Transaction
 
 
 def test_period_bounds_supports_week_and_custom():
@@ -50,3 +51,33 @@ def test_summary_and_delete_transaction(tmp_path):
 
     assert db.delete_transaction_web(t2.id, "c1")
     assert db.get_transaction(t2.id) is None
+
+
+def test_category_crud_and_settings(tmp_path):
+    db = Database(str(tmp_path / "settings.db"))
+    db.initialize()
+
+    # Category Create & Read
+    db.upsert_category(Category("Investasi", ["saham", "bibit"], "📈", "both"))
+    cats = {c.name: c for c in db.list_categories()}
+    assert "Investasi" in cats
+    assert cats["Investasi"].emoji == "📈"
+
+    # Transaction count & rename
+    tx = db.add_transaction(Transaction(None, "u1", "Ayah", "c1", "expense", 500000, "Beli Saham", "Investasi", date(2026, 10, 1), date(2026, 10, 1)))
+    assert db.count_category_transactions("Investasi") == 1
+
+    db.rename_category_transactions("Investasi", "Investasi & Reksa")
+    assert db.get_transaction(tx.id).category == "Investasi & Reksa"
+
+    # Category Delete
+    assert db.delete_category("Investasi")
+    # Lain-lain cannot be deleted
+    assert not db.delete_category("Lain-lain")
+
+    # Settings Key-Value Store
+    db.set_setting("gemini_api_keys", "AIzaTestKey123")
+    assert db.get_setting("gemini_api_keys") == "AIzaTestKey123"
+
+    db.set_setting("web_password", "rahasiaKeluarga123")
+    assert _get_active_password(db) == "rahasiaKeluarga123"

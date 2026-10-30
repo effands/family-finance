@@ -1,6 +1,7 @@
 """Passenger WSGI entrypoint for Telegram webhook and family finance dashboard.
 
 Sistem Manajemen Keuangan Personal & Pembukuan Keluarga Terpadu.
+Dilengkapi modul Dasbor Analitik & Pengaturan Sistem (Kategori, Gemini AI, Keamanan).
 """
 import csv
 import hashlib
@@ -8,16 +9,17 @@ import html
 import io
 import json
 import os
+import sys
 from datetime import date, datetime, timedelta
 from http.cookies import SimpleCookie
-from urllib.parse import parse_qs, urlencode
+from urllib.parse import parse_qs, quote_plus, unquote_plus, urlencode
 from urllib.request import Request, urlopen
 
 from src.categorizer import categorize
 from src.config import load_settings
 from src.database import Database
 from src.formatting import format_rupiah, render_confirmation
-from src.models import Transaction, TransactionFilters
+from src.models import Category, Transaction, TransactionFilters
 from src.parser import ParseError, parse_message
 
 TITLE = "Finance Family — Sistem Manajemen Keuangan Keluarga"
@@ -58,6 +60,12 @@ def _svg_icon(name: str) -> str:
         "table": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>',
         "check": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
         "file-text": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></svg>',
+        "settings": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+        "layout-dashboard": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>',
+        "sparkles": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>',
+        "shield": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+        "edit": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>',
+        "key": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>',
     }
     return icons.get(name, "")
 
@@ -88,13 +96,62 @@ def _set_webhook():
         pass
 
 
-def _authorized(environ):
-    password = os.environ.get("WEB_PASSWORD")
+def _get_active_password(db: Database) -> str:
+    db_pw = db.get_setting("web_password", "")
+    if db_pw:
+        return db_pw
+    return os.environ.get("WEB_PASSWORD", "")
+
+
+def _authorized(environ, db: Database) -> bool:
+    password = _get_active_password(db)
     if not password:
         return False
     cookie = SimpleCookie(environ.get("HTTP_COOKIE", ""))
     expected = hashlib.sha256(password.encode()).hexdigest()
     return bool(cookie.get("ff_session") and cookie["ff_session"].value == expected)
+
+
+def _update_env_file(key: str, value: str, env_path: str = ".env"):
+    try:
+        if not os.path.exists(env_path):
+            with open(env_path, "w", encoding="utf-8") as f:
+                f.write(f"{key}={value}\n")
+            return
+        with open(env_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        found = False
+        new_lines = []
+        for line in lines:
+            if line.strip().startswith(f"{key}=") or line.strip().startswith(f"export {key}="):
+                new_lines.append(f"{key}={value}\n")
+                found = True
+            else:
+                new_lines.append(line)
+        if not found:
+            new_lines.append(f"{key}={value}\n")
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+    except Exception:
+        pass
+
+
+def _test_gemini_connection(api_key: str, model: str) -> tuple[bool, str]:
+    clean_key = (api_key.split(",")[0] or "").strip()
+    if not clean_key:
+        return False, "Kunci API Gemini belum diisi."
+    try:
+        from google import genai
+        client = genai.Client(api_key=clean_key)
+        response = client.models.generate_content(
+            model=model or "gemini-2.0-flash",
+            contents="Tes koneksi. Jawab 'OK'."
+        )
+        if response and response.text:
+            return True, "Koneksi berhasil dan model AI merespons dengan normal."
+        return True, "Koneksi berhasil terhubung ke server Google Gemini."
+    except Exception as exc:
+        return False, str(exc)
 
 
 def _html_page(title, body, status="200 OK", headers=None):
@@ -342,6 +399,426 @@ def _rows_html(rows, active_chat_id=""):
     return "".join(output)
 
 
+def _render_settings_page(db: Database, settings, active_tab: str, toast_html: str):
+    categories = db.list_categories()
+    
+    # Active Gemini Configurations
+    gemini_keys_val = db.get_setting("gemini_api_keys", "") or os.getenv("GEMINI_API_KEYS", os.getenv("GEMINI_API_KEY", ""))
+    gemini_model_val = db.get_setting("gemini_model", "") or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    gemini_active = bool(gemini_keys_val.strip())
+    
+    # Tab active classes
+    tab_cat_active = "active" if active_tab == "categories" else ""
+    tab_gemini_active = "active" if active_tab == "gemini" else ""
+    tab_sec_active = "active" if active_tab == "security" else ""
+    tab_sys_active = "active" if active_tab == "system" else ""
+
+    # Categories Table Content
+    cat_rows = []
+    for c in categories:
+        tx_count = db.count_category_transactions(c.name)
+        type_label = "Pengeluaran" if c.type == "expense" else ("Pemasukan" if c.type == "income" else "Pemasukan & Pengeluaran")
+        type_cls = "expense" if c.type == "expense" else ("income" if c.type == "income" else "neutral")
+        kw_badges = "".join(f'<span class="keyword-badge">{html.escape(k)}</span>' for k in c.keywords) or '<span style="color:var(--ink-faint); font-size:12px;">(Tanpa kata kunci)</span>'
+        
+        is_default = c.name == "Lain-lain"
+        delete_btn = f"""<button class="btn btn-ghost btn-sm" type="button" style="color: var(--expense-main);" title="Hapus Kategori" onclick="confirmDeleteCategory('{html.escape(c.name.replace("'", "\\'"))}')">{_svg_icon("trash")}</button>""" if not is_default else '<span style="font-size:11px; color:var(--ink-faint); font-style:italic;">Bawaan sistem</span>'
+        
+        cat_rows.append(f"""<tr>
+          <td style="font-size: 20px; width: 50px; text-align: center;">{c.emoji}</td>
+          <td style="font-weight: 700; color: var(--ink-primary);">{html.escape(c.name)}</td>
+          <td><span class="badge-type {type_cls}">{type_label}</span></td>
+          <td><div class="category-keywords-wrap">{kw_badges}</div></td>
+          <td class="tabular-nums" style="font-weight: 600; color: var(--ink-muted);">{tx_count} transaksi</td>
+          <td class="action-cell">
+            <button class="btn btn-ghost btn-sm" type="button" title="Sunting Kategori" onclick="openEditCategoryModal('{html.escape(c.name.replace("'", "\\'"))}', '{c.emoji}', '{c.type}', '{html.escape(",".join(c.keywords).replace("'", "\\'"))}')">
+              {_svg_icon("edit")}
+            </button>
+            {delete_btn}
+          </td>
+        </tr>""")
+    
+    categories_table_html = "".join(cat_rows)
+
+    # Gemini Callout Box
+    if gemini_active:
+        gemini_status_html = f"""<div class="status-callout active">
+          {_svg_icon("check")}
+          <div>
+            <strong>Layanan Gemini Vision AI Siap Digunakan</strong>
+            <div style="font-size: 12px; margin-top: 2px;">Kunci API telah tersimpan dan aktif untuk ekstraksi otomatis struk belanja dari bot Telegram.</div>
+          </div>
+        </div>"""
+    else:
+        gemini_status_html = f"""<div class="status-callout inactive">
+          {_svg_icon("key")}
+          <div>
+            <strong>Integrasi Gemini Vision AI Belum Dikonfigurasi</strong>
+            <div style="font-size: 12px; margin-top: 2px;">Tambahkan Kunci API Gemini agar foto struk belanja yang dikirim ke bot Telegram dapat dianalisa secara otomatis.</div>
+          </div>
+        </div>"""
+
+    body = f"""<div class="toast-container">{toast_html}</div>
+
+<main class="page-shell">
+  <!-- Topbar Header -->
+  <header class="topbar">
+    <div class="brand-lockup">
+      <div class="brand-mark">FF</div>
+      <div class="brand-info">
+        <span class="brand-badge"><span class="status-dot"></span>Panel Pengaturan</span>
+        <h1 class="brand-title">Pengaturan Sistem</h1>
+        <span class="brand-desc">Konfigurasi Kategori, Layanan AI Gemini, Keamanan & Parameter Sistem</span>
+      </div>
+    </div>
+    <div class="actions">
+      <nav class="header-nav-menu">
+        <a class="header-nav-link" href="/keuangan/dashboard">
+          {_svg_icon("layout-dashboard")} Dasbor
+        </a>
+        <a class="header-nav-link active" href="/keuangan/settings">
+          {_svg_icon("settings")} Pengaturan
+        </a>
+      </nav>
+      <a class="btn btn-ghost" href="/keuangan/dashboard" title="Kembali ke Dasbor">
+        Kembali ke Dasbor
+      </a>
+      <a class="btn btn-ghost" href="/keuangan/logout" title="Keluar dari sesi ini" onclick="return confirm('Keluar dari sesi dasbor keuangan?')">
+        {_svg_icon("logout")}
+      </a>
+    </div>
+  </header>
+
+  <!-- Settings Horizontal Tabs -->
+  <nav class="settings-nav-tabs">
+    <a class="settings-tab-btn {tab_cat_active}" href="/keuangan/settings?tab=categories">
+      🏷️ Kategori Transaksi
+    </a>
+    <a class="settings-tab-btn {tab_gemini_active}" href="/keuangan/settings?tab=gemini">
+      {_svg_icon("sparkles")} Integrasi Gemini AI
+    </a>
+    <a class="settings-tab-btn {tab_sec_active}" href="/keuangan/settings?tab=security">
+      {_svg_icon("shield")} Kata Sandi & Keamanan
+    </a>
+    <a class="settings-tab-btn {tab_sys_active}" href="/keuangan/settings?tab=system">
+      ⚙️ Info Sistem & Telegram
+    </a>
+  </nav>
+
+  <!-- TAB 1: KATEGORI TRANSAKSI (CRUD) -->
+  <div id="tab-content-categories" style="display: {'block' if active_tab == 'categories' else 'none'};">
+    <section class="settings-section-card">
+      <div class="settings-section-header">
+        <div>
+          <h2 class="settings-section-title">Manajemen Kategori Transaksi</h2>
+          <p class="settings-section-desc">
+            Kelola klasifikasi pos pengeluaran dan pemasukan. Kata kunci digunakan oleh parser otomatis untuk mengkategorikan transaksi teks dari pesan Telegram.
+          </p>
+        </div>
+        <button class="btn btn-primary" type="button" onclick="openNewCategoryModal()">
+          {_svg_icon("plus")} Tambah Kategori Baru
+        </button>
+      </div>
+
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width: 60px; text-align: center;">Ikon</th>
+              <th style="width: 180px;">Nama Kategori</th>
+              <th style="width: 150px;">Tipe Pos</th>
+              <th>Kata Kunci Deteksi Otomatis (Keywords)</th>
+              <th style="width: 130px;">Penggunaan</th>
+              <th style="width: 100px; text-align: center;">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {categories_table_html}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- TAB 2: INTEGRASI GEMINI VISION AI -->
+  <div id="tab-content-gemini" style="display: {'block' if active_tab == 'gemini' else 'none'};">
+    <section class="settings-section-card">
+      <div class="settings-section-header">
+        <div>
+          <h2 class="settings-section-title">Konfigurasi Google Gemini Vision AI</h2>
+          <p class="settings-section-desc">
+            Membaca foto struk dan nota belanja secara instan via Telegram, mengekstraksi tanggal, nominal total, nama toko, dan menetapkan kategori secara cerdas.
+          </p>
+        </div>
+      </div>
+
+      {gemini_status_html}
+
+      <form method="post" action="/keuangan/settings/gemini/save" style="max-width: 680px; display: flex; flex-direction: column; gap: 18px;">
+        <div class="form-group">
+          <label for="gemini-key">Google Gemini API Key</label>
+          <div class="api-input-wrap">
+            <input class="form-control" type="password" id="gemini-key" name="gemini_api_keys" value="{html.escape(gemini_keys_val)}" placeholder="AIzaSy... (beberapa key dipisahkan koma untuk failover otomatis)">
+            <button type="button" class="api-reveal-btn" onclick="toggleApiKeyReveal('gemini-key', this)">Tampilkan</button>
+          </div>
+          <div class="setting-help-text">
+            Dapatkan Kunci API gratis melalui portal resmi <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a>. Anda dapat memasukkan lebih dari satu key dipisahkan koma sebagai cadangan otomatis (*key rotation*).
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="gemini-model">Pilihan Model Gemini</label>
+          <select class="form-control" id="gemini-model" name="gemini_model">
+            <option value="gemini-2.0-flash" {'selected' if gemini_model_val == 'gemini-2.0-flash' else ''}>gemini-2.0-flash (Direkomendasikan: Sangat Cepat & Akurat)</option>
+            <option value="gemini-1.5-flash" {'selected' if gemini_model_val == 'gemini-1.5-flash' else ''}>gemini-1.5-flash (Ringan & Cepat)</option>
+            <option value="gemini-1.5-pro" {'selected' if gemini_model_val == 'gemini-1.5-pro' else ''}>gemini-1.5-pro (Analisis Mendalam)</option>
+          </select>
+          <div class="setting-help-text">
+            Model *gemini-2.0-flash* dirancang khusus untuk inferensi multimodal berkecepatan tinggi dengan kuota gratis yang memadai.
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap;">
+          <button class="btn btn-primary" type="submit">
+            {_svg_icon("check")} Simpan Konfigurasi AI
+          </button>
+          <button class="btn btn-secondary" type="submit" formaction="/keuangan/settings/gemini/test">
+            {_svg_icon("sparkles")} Uji Koneksi Gemini
+          </button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <!-- TAB 3: KATA SANDI & KEAMANAN -->
+  <div id="tab-content-security" style="display: {'block' if active_tab == 'security' else 'none'};">
+    <section class="settings-section-card" style="max-width: 680px;">
+      <div class="settings-section-header">
+        <div>
+          <h2 class="settings-section-title">Perbarui Kata Sandi Akses</h2>
+          <p class="settings-section-desc">
+            Ubah kata sandi otorisasi yang digunakan untuk masuk ke dasbor keuangan keluarga.
+          </p>
+        </div>
+      </div>
+
+      <form method="post" action="/keuangan/settings/password/save" style="display: flex; flex-direction: column; gap: 18px;">
+        <div class="form-group">
+          <label for="current-pwd">Kata Sandi Saat Ini</label>
+          <input class="form-control" type="password" id="current-pwd" name="current_password" placeholder="••••••••••••" required>
+        </div>
+
+        <div class="form-group">
+          <label for="new-pwd">Kata Sandi Baru</label>
+          <input class="form-control" type="password" id="new-pwd" name="new_password" minlength="6" placeholder="Minimal 6 karakter" required>
+        </div>
+
+        <div class="form-group">
+          <label for="confirm-pwd">Konfirmasi Kata Sandi Baru</label>
+          <input class="form-control" type="password" id="confirm-pwd" name="confirm_password" minlength="6" placeholder="Ulangi kata sandi baru" required>
+        </div>
+
+        <div style="background-color: var(--bg-surface-soft); padding: 12px 16px; border-radius: 8px; font-size: 12.5px; color: var(--ink-secondary); border: 1px solid var(--border-subtle);">
+          🔒 Kata sandi dienkripsi menggunakan algoritma cryptographic hashing SHA-256 dan disimpan secara terlindung di basis data lokal.
+        </div>
+
+        <div>
+          <button class="btn btn-primary" type="submit">
+            Perbarui Kata Sandi
+          </button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <!-- TAB 4: INFO SISTEM & TELEGRAM -->
+  <div id="tab-content-system" style="display: {'block' if active_tab == 'system' else 'none'};">
+    <section class="settings-section-card">
+      <div class="settings-section-header">
+        <div>
+          <h2 class="settings-section-title">Parameter & Lingkungan Sistem</h2>
+          <p class="settings-section-desc">
+            Informasi status infrastruktur, perizinan Telegram, dan pengaturan lingkungan aktif.
+          </p>
+        </div>
+      </div>
+
+      <table class="info-table">
+        <tbody>
+          <tr>
+            <th>ID Chat Telegram Terdaftar</th>
+            <td><code>{html.escape(", ".join(sorted(settings.allowed_chat_ids)) or "(Belum diisi)")}</code></td>
+          </tr>
+          <tr>
+            <th>Zona Waktu Operasional</th>
+            <td>{html.escape(settings.timezone)}</td>
+          </tr>
+          <tr>
+            <th>Lokasi Berkas Basis Data</th>
+            <td><code>{html.escape(settings.database_path)}</code></td>
+          </tr>
+          <tr>
+            <th>Batas Laju Pesan (*Rate Limit*)</th>
+            <td>{settings.rate_limit} pesan / menit / pengguna</td>
+          </tr>
+          <tr>
+            <th>Runtime Python</th>
+            <td>Python {sys.version.split()[0]} ({sys.platform})</td>
+          </tr>
+          <tr>
+            <th>Mode Basis Data SQLite</th>
+            <td>WAL (*Write-Ahead Logging*) Enabled</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+</main>
+
+<!-- Modal: Tambah / Sunting Kategori -->
+<div class="modal-overlay" id="modal-category-edit">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <h3 id="cat-modal-title">Tambah Kategori Baru</h3>
+      <button class="modal-close-btn" type="button" onclick="closeModal('modal-category-edit')">&times;</button>
+    </div>
+    <form method="post" action="/keuangan/settings/category/save">
+      <input type="hidden" id="cat-old-name" name="old_name" value="">
+      <div class="modal-body">
+        <div style="display: grid; grid-template-columns: 80px 1fr; gap: 12px;">
+          <div class="form-group">
+            <label for="cat-emoji">Emoji</label>
+            <input class="form-control" style="text-align: center; font-size: 20px;" id="cat-emoji" name="emoji" value="📁" maxlength="4" required>
+          </div>
+          <div class="form-group">
+            <label for="cat-name">Nama Kategori</label>
+            <input class="form-control" id="cat-name" name="name" placeholder="Contoh: Investasi & Saham" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label style="font-size: 11.5px; color: var(--ink-muted); margin-bottom: 4px;">Pilihan Emoji Cepat:</label>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            {''.join(f'<button type="button" class="btn btn-secondary btn-sm" style="padding: 4px 8px; font-size: 15px;" onclick="setEmojiQuick(\'{em}\')">{em}</button>' for em in ['🍔','⛽','🏠','💊','📱','👶','👕','💰','📈','🎓','🚗','✈️','🎁','🐾','🛒','💳'])}
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="cat-type">Jenis Alokasi Pos</label>
+          <select class="form-control" id="cat-type" name="type">
+            <option value="expense">Pengeluaran (Beban Kas Keluar)</option>
+            <option value="income">Pemasukan (Kas Masuk)</option>
+            <option value="both">Keduanya (Pemasukan & Pengeluaran)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="cat-keywords">Kata Kunci Deteksi Otomatis (Pisahkan dengan koma)</label>
+          <textarea class="form-control" id="cat-keywords" name="keywords" rows="3" placeholder="Contoh: bibit, saham, reksa, crypto, dividen"></textarea>
+          <div class="setting-help-text">
+            Bot Telegram akan otomatis mengenali kata-kata ini saat mencatat transaksi dari pesan teks.
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" type="button" onclick="closeModal('modal-category-edit')">Batalkan</button>
+        <button class="btn btn-primary" type="submit">Simpan Kategori</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Konfirmasi Hapus Kategori -->
+<div class="modal-overlay" id="modal-category-delete">
+  <div class="modal-dialog" style="max-width: 440px;">
+    <div class="modal-header">
+      <h3 style="color: var(--expense-main);">Konfirmasi Hapus Kategori</h3>
+      <button class="modal-close-btn" type="button" onclick="closeModal('modal-category-delete')">&times;</button>
+    </div>
+    <form method="post" action="/keuangan/settings/category/delete">
+      <input type="hidden" id="delete-cat-name" name="name" value="">
+      <div class="modal-body">
+        <p style="font-size: 13.5px; color: var(--ink-secondary); line-height: 1.5;">
+          Hapus kategori <strong id="delete-cat-label">-</strong>?
+        </p>
+        <div style="font-size: 12px; color: var(--ink-muted); background: var(--bg-surface-soft); padding: 10px; border-radius: 8px; border: 1px solid var(--border-subtle); margin-top: 8px;">
+          Catatan: Seluruh riwayat transaksi yang terhubung ke kategori ini akan otomatis dialihkan ke kategori <strong>Lain-lain</strong> agar riwayat pembukuan Anda tetap aman.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" type="button" onclick="closeModal('modal-category-delete')">Batalkan</button>
+        <button class="btn btn-danger" type="submit">Ya, Hapus Kategori</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function dismissToast(id) {{
+  const el = document.getElementById(id);
+  if (el) {{
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(100%)';
+    setTimeout(() => el.remove(), 300);
+  }}
+}}
+setTimeout(() => dismissToast('main-toast'), 6000);
+
+function openModal(id) {{
+  const el = document.getElementById(id);
+  if (el) el.classList.add('active');
+}}
+
+function closeModal(id) {{
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('active');
+}}
+
+function openNewCategoryModal() {{
+  document.getElementById('cat-modal-title').innerText = 'Tambah Kategori Baru';
+  document.getElementById('cat-old-name').value = '';
+  document.getElementById('cat-name').value = '';
+  document.getElementById('cat-emoji').value = '📁';
+  document.getElementById('cat-type').value = 'expense';
+  document.getElementById('cat-keywords').value = '';
+  openModal('modal-category-edit');
+}}
+
+function openEditCategoryModal(name, emoji, type, keywords) {{
+  document.getElementById('cat-modal-title').innerText = 'Sunting Kategori: ' + name;
+  document.getElementById('cat-old-name').value = name;
+  document.getElementById('cat-name').value = name;
+  document.getElementById('cat-emoji').value = emoji || '📁';
+  document.getElementById('cat-type').value = type || 'expense';
+  document.getElementById('cat-keywords').value = keywords || '';
+  openModal('modal-category-edit');
+}}
+
+function confirmDeleteCategory(name) {{
+  document.getElementById('delete-cat-name').value = name;
+  document.getElementById('delete-cat-label').innerText = name;
+  openModal('modal-category-delete');
+}}
+
+function setEmojiQuick(em) {{
+  document.getElementById('cat-emoji').value = em;
+}}
+
+function toggleApiKeyReveal(inputId, btn) {{
+  const inp = document.getElementById(inputId);
+  if (inp.type === 'password') {{
+    inp.type = 'text';
+    btn.innerText = 'Sembunyikan';
+  }} else {{
+    inp.type = 'password';
+    btn.innerText = 'Tampilkan';
+  }}
+}}
+</script>"""
+
+    return body
+
+
 def _dashboard_response(environ, start_response):
     path = environ.get("PATH_INFO", "")
 
@@ -373,14 +850,20 @@ def _dashboard_response(environ, start_response):
         )
         return [b""]
 
+    # Initialize Database for Authentication and Settings
+    settings = load_settings()
+    db = Database(settings.database_path)
+    db.initialize()
+    chat_id = next(iter(settings.allowed_chat_ids), "default")
+
     # Authentication Handling
-    if not _authorized(environ):
+    if not _authorized(environ, db):
         error = ""
         if environ.get("REQUEST_METHOD") == "POST":
             length = int(environ.get("CONTENT_LENGTH") or 0)
             form = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "replace"))
             password = form.get("password", [""])[0]
-            expected = os.environ.get("WEB_PASSWORD", "")
+            expected = _get_active_password(db)
             if password and password == expected:
                 cookie = hashlib.sha256(expected.encode()).hexdigest()
                 is_https = environ.get("wsgi.url_scheme") == "https" or environ.get("HTTP_X_FORWARDED_PROTO") == "https"
@@ -398,11 +881,102 @@ def _dashboard_response(environ, start_response):
         start_response(status, headers)
         return body
 
-    # Authorized Session - Initialize Resources
-    settings = load_settings()
-    db = Database(settings.database_path)
-    db.initialize()
-    chat_id = next(iter(settings.allowed_chat_ids), "default")
+    # Parse Queries & Body
+    query = parse_qs(environ.get("QUERY_STRING", ""))
+
+    # SETTINGS: Category Save (Create / Update)
+    if path.endswith("/settings/category/save") and environ.get("REQUEST_METHOD") == "POST":
+        length = int(environ.get("CONTENT_LENGTH") or 0)
+        form = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "replace"))
+        name = form.get("name", [""])[0].strip()
+        old_name = form.get("old_name", [""])[0].strip()
+        emoji = form.get("emoji", ["📁"])[0].strip() or "📁"
+        keywords_raw = form.get("keywords", [""])[0]
+        keywords = [k.strip() for k in keywords_raw.split(",") if k.strip()]
+        tx_type = form.get("type", ["expense"])[0]
+        if name:
+            if old_name and old_name != name and old_name != "Lain-lain":
+                db.rename_category_transactions(old_name, name)
+                db.delete_category(old_name)
+            db.upsert_category(Category(name, keywords, emoji, tx_type))
+            start_response("303 See Other", [("Location", "/keuangan/settings?tab=categories&toast=cat_saved")])
+            return [b""]
+        start_response("303 See Other", [("Location", "/keuangan/settings?tab=categories&toast=cat_err")])
+        return [b""]
+
+    # SETTINGS: Category Delete
+    if path.endswith("/settings/category/delete") and environ.get("REQUEST_METHOD") == "POST":
+        length = int(environ.get("CONTENT_LENGTH") or 0)
+        form = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "replace"))
+        name = form.get("name", [""])[0].strip()
+        if name == "Lain-lain":
+            start_response("303 See Other", [("Location", "/keuangan/settings?tab=categories&toast=cat_err_protected")])
+            return [b""]
+        if name:
+            db.rename_category_transactions(name, "Lain-lain")
+            db.delete_category(name)
+            start_response("303 See Other", [("Location", "/keuangan/settings?tab=categories&toast=cat_deleted")])
+            return [b""]
+
+    # SETTINGS: Gemini Save
+    if path.endswith("/settings/gemini/save") and environ.get("REQUEST_METHOD") == "POST":
+        length = int(environ.get("CONTENT_LENGTH") or 0)
+        form = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "replace"))
+        keys = form.get("gemini_api_keys", [""])[0].strip()
+        model = form.get("gemini_model", ["gemini-2.0-flash"])[0].strip()
+        db.set_setting("gemini_api_keys", keys)
+        db.set_setting("gemini_model", model)
+        os.environ["GEMINI_API_KEYS"] = keys
+        os.environ["GEMINI_MODEL"] = model
+        _update_env_file("GEMINI_API_KEYS", keys)
+        _update_env_file("GEMINI_MODEL", model)
+        start_response("303 See Other", [("Location", "/keuangan/settings?tab=gemini&toast=gemini_saved")])
+        return [b""]
+
+    # SETTINGS: Gemini Test Connection
+    if path.endswith("/settings/gemini/test") and environ.get("REQUEST_METHOD") == "POST":
+        length = int(environ.get("CONTENT_LENGTH") or 0)
+        form = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "replace"))
+        keys = form.get("gemini_api_keys", [""])[0].strip()
+        model = form.get("gemini_model", ["gemini-2.0-flash"])[0].strip()
+        if not keys:
+            start_response("303 See Other", [("Location", "/keuangan/settings?tab=gemini&toast=gemini_err_empty")])
+            return [b""]
+        ok, msg = _test_gemini_connection(keys, model)
+        if ok:
+            start_response("303 See Other", [("Location", "/keuangan/settings?tab=gemini&toast=gemini_test_ok")])
+            return [b""]
+        start_response("303 See Other", [("Location", f"/keuangan/settings?tab=gemini&toast=gemini_test_fail&err_msg={quote_plus(msg[:120])}")])
+        return [b""]
+
+    # SETTINGS: Password Change
+    if path.endswith("/settings/password/save") and environ.get("REQUEST_METHOD") == "POST":
+        length = int(environ.get("CONTENT_LENGTH") or 0)
+        form = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "replace"))
+        cur_pwd = form.get("current_password", [""])[0]
+        new_pwd = form.get("new_password", [""])[0]
+        conf_pwd = form.get("confirm_password", [""])[0]
+        active_pwd = _get_active_password(db)
+        if cur_pwd != active_pwd:
+            start_response("303 See Other", [("Location", "/keuangan/settings?tab=security&toast=pwd_err_current")])
+            return [b""]
+        if len(new_pwd) < 6 or new_pwd != conf_pwd:
+            start_response("303 See Other", [("Location", "/keuangan/settings?tab=security&toast=pwd_err_match")])
+            return [b""]
+        db.set_setting("web_password", new_pwd)
+        os.environ["WEB_PASSWORD"] = new_pwd
+        _update_env_file("WEB_PASSWORD", new_pwd)
+        new_cookie = hashlib.sha256(new_pwd.encode()).hexdigest()
+        is_https = environ.get("wsgi.url_scheme") == "https" or environ.get("HTTP_X_FORWARDED_PROTO") == "https"
+        sec_flag = " Secure;" if is_https else ""
+        start_response(
+            "303 See Other",
+            [
+                ("Location", "/keuangan/settings?tab=security&toast=pwd_saved"),
+                ("Set-Cookie", f"ff_session={new_cookie}; Path=/; HttpOnly;{sec_flag} SameSite=Lax"),
+            ],
+        )
+        return [b""]
 
     # CSV Template Download
     if path.endswith("/template.csv"):
@@ -486,51 +1060,7 @@ def _dashboard_response(environ, start_response):
             start_response("400 Bad Request", [("Content-Type", "text/plain; charset=utf-8")])
             return [str(exc).encode("utf-8")]
 
-    # Parse Filters & Queries
-    query = parse_qs(environ.get("QUERY_STRING", ""))
-    error = ""
-    try:
-        filters, period = _filters(query, chat_id)
-    except ValueError as exc:
-        filters, period, error = TransactionFilters(chat_id), "month", str(exc)
-
-    rows = db.list_transactions(filters)
-    income, expense, categories, users, cat_counts, user_counts = _summary(rows)
-    balance = income - expense
-    savings_rate = round(((income - expense) / income) * 100, 1) if income > 0 else (0.0 if expense > 0 else 100.0)
-
-    # Export CSV
-    if path.endswith("/export.csv"):
-        stream = io.StringIO()
-        writer = csv.writer(stream)
-        writer.writerow(["ID Transaksi", "Tanggal", "Jenis Transaksi", "Nominal (IDR)", "Deskripsi", "Kategori", "Pencatat"])
-        for x in rows:
-            type_label = "Pemasukan" if x.type == "income" else "Pengeluaran"
-            writer.writerow([
-                x.id,
-                x.transaction_date.isoformat(),
-                type_label,
-                x.amount,
-                _safe_csv_value(x.description),
-                _safe_csv_value(x.category),
-                _safe_csv_value(x.username or x.user_id or ""),
-            ])
-        payload = stream.getvalue().encode("utf-8-sig")
-        start_response(
-            "200 OK",
-            [
-                ("Content-Type", "text/csv; charset=utf-8"),
-                ("Content-Disposition", f'attachment; filename="laporan_keuangan_family_{period}_{date.today().isoformat()}.csv"'),
-                ("Content-Length", str(len(payload))),
-            ],
-        )
-        return [payload]
-
-    # Base URL query builder
-    clean_params = {k: v[0] for k, v in query.items() if v and k not in ("toast", "imported", "import_err")}
-    export_q = urlencode(clean_params)
-
-    # Toast Notifications Detection
+    # Parse Toast Notifications
     toast_type = query.get("toast", [""])[0]
     toast_html = ""
     if toast_type == "created":
@@ -569,6 +1099,144 @@ def _dashboard_response(environ, start_response):
           </div>
           <button class="toast-close" onclick="dismissToast('main-toast')">&times;</button>
         </div>"""
+    elif toast_type == "cat_saved":
+        toast_html = f"""<div class="toast toast-success" id="main-toast">
+          <div style="color: var(--income-main);">{_svg_icon("check")}</div>
+          <div style="flex: 1;">
+            <div class="toast-title">Kategori Berhasil Disimpan</div>
+            <div class="toast-msg">Pos kategori dan kata kunci parser otomatis berhasil diperbarui.</div>
+          </div>
+          <button class="toast-close" onclick="dismissToast('main-toast')">&times;</button>
+        </div>"""
+    elif toast_type == "cat_deleted":
+        toast_html = f"""<div class="toast toast-success" id="main-toast">
+          <div style="color: var(--income-main);">{_svg_icon("check")}</div>
+          <div style="flex: 1;">
+            <div class="toast-title">Kategori Berhasil Dihapus</div>
+            <div class="toast-msg">Kategori telah dihapus dan seluruh transaksi terkait telah dialihkan ke 'Lain-lain'.</div>
+          </div>
+          <button class="toast-close" onclick="dismissToast('main-toast')">&times;</button>
+        </div>"""
+    elif toast_type == "cat_err_protected":
+        toast_html = f"""<div class="toast toast-error" id="main-toast">
+          <div style="flex: 1;">
+            <div class="toast-title">Penghapusan Ditolak</div>
+            <div class="toast-msg">Kategori 'Lain-lain' merupakan kategori bawaan sistem dan tidak dapat dihapus.</div>
+          </div>
+          <button class="toast-close" onclick="dismissToast('main-toast')">&times;</button>
+        </div>"""
+    elif toast_type == "gemini_saved":
+        toast_html = f"""<div class="toast toast-success" id="main-toast">
+          <div style="color: var(--income-main);">{_svg_icon("check")}</div>
+          <div style="flex: 1;">
+            <div class="toast-title">Konfigurasi Gemini Disimpan</div>
+            <div class="toast-msg">Kunci API dan model Google Gemini AI berhasil diperbarui.</div>
+          </div>
+          <button class="toast-close" onclick="dismissToast('main-toast')">&times;</button>
+        </div>"""
+    elif toast_type == "gemini_test_ok":
+        toast_html = f"""<div class="toast toast-success" id="main-toast">
+          <div style="color: var(--income-main);">{_svg_icon("check")}</div>
+          <div style="flex: 1;">
+            <div class="toast-title">Pengujian Gemini AI Berhasil!</div>
+            <div class="toast-msg">Koneksi ke Google Gemini AI aktif dan respons valid diterima.</div>
+          </div>
+          <button class="toast-close" onclick="dismissToast('main-toast')">&times;</button>
+        </div>"""
+    elif toast_type == "gemini_test_fail":
+        err_detail = unquote_plus(query.get("err_msg", [""])[0])
+        toast_html = f"""<div class="toast toast-error" id="main-toast">
+          <div style="flex: 1;">
+            <div class="toast-title">Pengujian Gemini AI Gagal</div>
+            <div class="toast-msg">{html.escape(err_detail or 'Koneksi gagal. Periksa Kunci API Anda.')}</div>
+          </div>
+          <button class="toast-close" onclick="dismissToast('main-toast')">&times;</button>
+        </div>"""
+    elif toast_type == "gemini_err_empty":
+        toast_html = f"""<div class="toast toast-error" id="main-toast">
+          <div style="flex: 1;">
+            <div class="toast-title">Kunci API Belum Diisi</div>
+            <div class="toast-msg">Silakan masukkan minimal satu Google Gemini API Key sebelum menguji.</div>
+          </div>
+          <button class="toast-close" onclick="dismissToast('main-toast')">&times;</button>
+        </div>"""
+    elif toast_type == "pwd_saved":
+        toast_html = f"""<div class="toast toast-success" id="main-toast">
+          <div style="color: var(--income-main);">{_svg_icon("check")}</div>
+          <div style="flex: 1;">
+            <div class="toast-title">Kata Sandi Berhasil Diperbarui</div>
+            <div class="toast-msg">Kata sandi akses dasbor telah berhasil diganti dan sesi aktif diperbarui.</div>
+          </div>
+          <button class="toast-close" onclick="dismissToast('main-toast')">&times;</button>
+        </div>"""
+    elif toast_type == "pwd_err_current":
+        toast_html = f"""<div class="toast toast-error" id="main-toast">
+          <div style="flex: 1;">
+            <div class="toast-title">Gagal Mengubah Kata Sandi</div>
+            <div class="toast-msg">Kata sandi saat ini yang Anda masukkan tidak cocok.</div>
+          </div>
+          <button class="toast-close" onclick="dismissToast('main-toast')">&times;</button>
+        </div>"""
+    elif toast_type == "pwd_err_match":
+        toast_html = f"""<div class="toast toast-error" id="main-toast">
+          <div style="flex: 1;">
+            <div class="toast-title">Konfirmasi Kata Sandi Tidak Sesuai</div>
+            <div class="toast-msg">Kata sandi baru dan konfirmasi harus cocok, serta minimal 6 karakter.</div>
+          </div>
+          <button class="toast-close" onclick="dismissToast('main-toast')">&times;</button>
+        </div>"""
+
+    # ROUTE: SETTINGS PAGE
+    if path.endswith("/settings"):
+        active_tab = query.get("tab", ["categories"])[0]
+        if active_tab not in ("categories", "gemini", "security", "system"):
+            active_tab = "categories"
+        body = _render_settings_page(db, settings, active_tab, toast_html)
+        status, headers, payload = _html_page("Pengaturan Sistem — Finance Family", body)
+        start_response(status, headers)
+        return payload
+
+    # ROUTE: DASHBOARD PAGE & FILTERS
+    try:
+        filters, period = _filters(query, chat_id)
+    except ValueError as exc:
+        filters, period = TransactionFilters(chat_id), "month"
+
+    rows = db.list_transactions(filters)
+    income, expense, categories, users, cat_counts, user_counts = _summary(rows)
+    balance = income - expense
+    savings_rate = round(((income - expense) / income) * 100, 1) if income > 0 else (0.0 if expense > 0 else 100.0)
+
+    # Export CSV
+    if path.endswith("/export.csv"):
+        stream = io.StringIO()
+        writer = csv.writer(stream)
+        writer.writerow(["ID Transaksi", "Tanggal", "Jenis Transaksi", "Nominal (IDR)", "Deskripsi", "Kategori", "Pencatat"])
+        for x in rows:
+            type_label = "Pemasukan" if x.type == "income" else "Pengeluaran"
+            writer.writerow([
+                x.id,
+                x.transaction_date.isoformat(),
+                type_label,
+                x.amount,
+                _safe_csv_value(x.description),
+                _safe_csv_value(x.category),
+                _safe_csv_value(x.username or x.user_id or ""),
+            ])
+        payload = stream.getvalue().encode("utf-8-sig")
+        start_response(
+            "200 OK",
+            [
+                ("Content-Type", "text/csv; charset=utf-8"),
+                ("Content-Disposition", f'attachment; filename="laporan_keuangan_family_{period}_{date.today().isoformat()}.csv"'),
+                ("Content-Length", str(len(payload))),
+            ],
+        )
+        return [payload]
+
+    # Base URL query builder
+    clean_params = {k: v[0] for k, v in query.items() if v and k not in ("toast", "imported", "import_err", "err_msg")}
+    export_q = urlencode(clean_params)
 
     # Fullscreen Table View (Excel/Audit view)
     if path.endswith(("/excel", "/fullscreen")):
@@ -583,6 +1251,10 @@ def _dashboard_response(environ, start_response):
       </div>
     </div>
     <div class="actions">
+      <nav class="header-nav-menu">
+        <a class="header-nav-link active" href="/keuangan/dashboard">{_svg_icon("layout-dashboard")} Dasbor</a>
+        <a class="header-nav-link" href="/keuangan/settings">{_svg_icon("settings")} Pengaturan</a>
+      </nav>
       <a class="btn btn-primary" href="/keuangan/export.csv?{export_q}">{_svg_icon("download")} Unduh CSV</a>
       <button class="btn btn-secondary" onclick="window.print()">{_svg_icon("printer")} Cetak Laporan</button>
       <a class="btn btn-ghost" href="/keuangan/dashboard?{export_q}">Kembali ke Dasbor</a>
@@ -808,6 +1480,14 @@ def _dashboard_response(environ, start_response):
       </div>
     </div>
     <div class="actions">
+      <nav class="header-nav-menu">
+        <a class="header-nav-link active" href="/keuangan/dashboard">
+          {_svg_icon("layout-dashboard")} Dasbor
+        </a>
+        <a class="header-nav-link" href="/keuangan/settings">
+          {_svg_icon("settings")} Pengaturan
+        </a>
+      </nav>
       <button class="btn btn-primary" type="button" onclick="openAddModal()">
         {_svg_icon("plus")} Catat Transaksi
       </button>
@@ -1318,6 +1998,12 @@ def application(environ, start_response):
     path = environ.get("PATH_INFO", "")
     valid_subpaths = (
         "/dashboard",
+        "/settings",
+        "/settings/category/save",
+        "/settings/category/delete",
+        "/settings/gemini/save",
+        "/settings/gemini/test",
+        "/settings/password/save",
         "/excel",
         "/fullscreen",
         "/export.csv",
