@@ -34,7 +34,7 @@ def _set_webhook():
     token = os.environ.get("BOT_TOKEN")
     if not token:
         return
-    body = urlencode({"url": "https://asistenq.com/family-finance/"}).encode()
+    body = urlencode({"url": "https://asistenq.com/keuangan/"}).encode()
     req = Request(f"https://api.telegram.org/bot{token}/setWebhook", data=body, method="POST")
     with urlopen(req, timeout=20):
         pass
@@ -73,7 +73,7 @@ def _dashboard_response(environ, start_response):
             if password == expected:
                 cookie = hashlib.sha256(expected.encode()).hexdigest()
                 body = _html_page("Finance Family", "<main><h1>Login berhasil</h1><p>Silakan buka ulang dashboard.</p></main>")
-                start_response("303 See Other", [("Location", "/family-finance/dashboard"), ("Set-Cookie", f"ff_session={cookie}; HttpOnly; Secure; SameSite=Lax")])
+                start_response("303 See Other", [("Location", "/keuangan/dashboard"), ("Set-Cookie", f"ff_session={cookie}; HttpOnly; Secure; SameSite=Lax")])
                 return [body.encode()]
         body = _html_page("Login — Finance Family", "<section class='card login'><h1>Finance Family</h1><p class='muted'>Masuk untuk melihat pembukuan keluarga.</p><form method='post'><label>Password dashboard</label><input name='password' type='password' autofocus required><button>Masuk</button></form></section>")
         start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")]); return [body.encode()]
@@ -83,7 +83,7 @@ def _dashboard_response(environ, start_response):
         lines += [f'{x.id},{x.transaction_date},{x.type},{x.amount},"{x.description.replace(chr(34), chr(34)*2)}","{x.category}","{x.username}"' for x in rows]
         payload = ("\n".join(lines) + "\n").encode(); start_response("200 OK", [("Content-Type", "text/csv; charset=utf-8"), ("Content-Disposition", "attachment; filename=finance-family.csv")]); return [payload]
     tr = "".join(f"<tr><td>{x.transaction_date:%d/%m/%Y}</td><td>{'💰' if x.type=='income' else '💸'}</td><td>{html.escape(x.description)}</td><td>{html.escape(x.category)}</td><td class={'green' if x.type=='income' else 'red'}>{format_rupiah(x.amount)}</td><td>{html.escape(x.username)}</td></tr>" for x in rows[-30:][::-1]) or "<tr><td colspan='6' class='muted'>Belum ada transaksi.</td></tr>"
-    body = f"<header><div><h1>Finance Family</h1><div class='muted'>Ringkasan pembukuan keluarga</div></div><div class='actions'><a href='/family-finance/export.csv'>⬇ Export Excel</a> <a href='#' onclick='window.print();return false'>🖨 Cetak / PDF</a></div></header><section class='grid'><div class='card'><div class='label'>Pemasukan</div><div class='value green'>{format_rupiah(income)}</div></div><div class='card'><div class='label'>Pengeluaran</div><div class='value red'>{format_rupiah(expense)}</div></div><div class='card'><div class='label'>Saldo bersih</div><div class='value blue'>{format_rupiah(income-expense)}</div></div></section><section class='card'><h2>Transaksi terbaru</h2><table><thead><tr><th>Tanggal</th><th></th><th>Deskripsi</th><th>Kategori</th><th>Nominal</th><th>Dari</th></tr></thead><tbody>{tr}</tbody></table></section>"
+    body = f"<header><div><h1>Finance Family</h1><div class='muted'>Ringkasan pembukuan keluarga</div></div><div class='actions'><a href='/keuangan/export.csv'>⬇ Export Excel</a> <a href='#' onclick='window.print();return false'>🖨 Cetak / PDF</a></div></header><section class='grid'><div class='card'><div class='label'>Pemasukan</div><div class='value green'>{format_rupiah(income)}</div></div><div class='card'><div class='label'>Pengeluaran</div><div class='value red'>{format_rupiah(expense)}</div></div><div class='card'><div class='label'>Saldo bersih</div><div class='value blue'>{format_rupiah(income-expense)}</div></div></section><section class='card'><h2>Transaksi terbaru</h2><table><thead><tr><th>Tanggal</th><th></th><th>Deskripsi</th><th>Kategori</th><th>Nominal</th><th>Dari</th></tr></thead><tbody>{tr}</tbody></table></section>"
     payload = _html_page("Finance Family — Dashboard", body).encode(); start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")]); return [payload]
 
 
