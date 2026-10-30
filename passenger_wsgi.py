@@ -484,7 +484,9 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
         kw_badges = "".join(f'<span class="keyword-badge">{html.escape(k)}</span>' for k in c.keywords) or '<span style="color:var(--ink-faint); font-size:12px;">(Tanpa kata kunci)</span>'
 
         is_default = c.name == "Lain-lain"
-        delete_btn = f"""<button class="btn btn-ghost btn-sm" type="button" style="color: var(--expense-main);" title="Hapus Kategori" onclick="confirmDeleteCategory('{html.escape(c.name.replace("'", "\\'"))}')">{_svg_icon("trash")}</button>""" if not is_default else '<span style="font-size:11px; color:var(--ink-faint); font-style:italic;">Bawaan sistem</span>'
+        category_js = html.escape(c.name).replace("'", "\\'")
+        keywords_js = html.escape(",".join(c.keywords)).replace("'", "\\'")
+        delete_btn = f"""<button class="btn btn-ghost btn-sm" type="button" style="color: var(--expense-main);" title="Hapus Kategori" onclick="confirmDeleteCategory('{category_js}')">{_svg_icon("trash")}</button>""" if not is_default else '<span style="font-size:11px; color:var(--ink-faint); font-style:italic;">Bawaan sistem</span>'
 
         cat_rows.append(f"""<tr>
           <td style="font-size: 20px; width: 50px; text-align: center;">{c.emoji}</td>
@@ -493,7 +495,7 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
           <td><div class="category-keywords-wrap">{kw_badges}</div></td>
           <td class="tabular-nums" style="font-weight: 600; color: var(--ink-muted);">{tx_count} transaksi</td>
           <td class="action-cell">
-            <button class="btn btn-ghost btn-sm" type="button" title="Sunting Kategori" onclick="openEditCategoryModal('{html.escape(c.name.replace("'", "\\'"))}', '{c.emoji}', '{c.type}', '{html.escape(",".join(c.keywords).replace("'", "\\'"))}')">
+            <button class="btn btn-ghost btn-sm" type="button" title="Sunting Kategori" onclick="openEditCategoryModal('{category_js}', '{c.emoji}', '{c.type}', '{keywords_js}')">
               {_svg_icon("edit")}
             </button>
             {delete_btn}
