@@ -20,11 +20,11 @@ def _clean_json(text: str) -> dict:
 
 class GeminiKeyPool:
     """Thread-safe round-robin key pool with per-request failover."""
-    def __init__(self, api_keys: tuple[str, ...] = (), model: str = "gemini-3.8-flash"):
+    def __init__(self, api_keys: tuple[str, ...] = (), model: str = "gemini-3.6-flash"):
         self._lock=threading.Lock(); self.update(api_keys, model)
     def update(self, api_keys: tuple[str, ...], model: str):
         with getattr(self, "_lock", threading.Lock()):
-            self.keys=tuple(dict.fromkeys(k.strip() for k in api_keys if k.strip())); self.model=model or "gemini-3.8-flash"; self.cursor=getattr(self, "cursor", 0) % max(1,len(self.keys)) if self.keys else 0
+            self.keys=tuple(dict.fromkeys(k.strip() for k in api_keys if k.strip())); self.model=model or "gemini-3.6-flash"; self.cursor=getattr(self, "cursor", 0) % max(1,len(self.keys)) if self.keys else 0
     def ordered(self):
         with self._lock:
             if not self.keys: return []
