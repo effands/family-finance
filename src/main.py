@@ -396,8 +396,9 @@ async def receipt_photo_handler(update: Update, context: ContextTypes.DEFAULT_TY
         stage = "mengirim hasil ke Telegram"
         await status_msg.edit_text(preview, parse_mode="Markdown", reply_markup=keys, read_timeout=60, connect_timeout=30)
     except Exception as exc:
-        logging.getLogger(__name__).error("Receipt failed at %s (%s)", stage, type(exc).__name__)
-        await status_msg.edit_text(f"⚠️ Gagal saat {stage}: {type(exc).__name__}. Silakan coba lagi.", read_timeout=60)
+        logging.getLogger(__name__).exception("Receipt failed at %s: %s", stage, exc)
+        detail = str(exc).replace("\n", " ").strip()[:240] or type(exc).__name__
+        await status_msg.edit_text(f"⚠️ Gagal saat {stage}: {detail}. Silakan coba lagi.", read_timeout=60)
 
 
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
