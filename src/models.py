@@ -30,3 +30,8 @@ class TransactionFilters:
     start: date | None = None
     end: date | None = None
     user_id: str | None = None
+    transaction_type: str | None = None
+    category: str | None = None
+    search: str | None = None
+    sort_by: str = "transaction_date"
+    sort_dir: str = "desc"

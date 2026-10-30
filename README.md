@@ -64,6 +64,29 @@ Pilihan deployment:
 
 Jangan membagikan `.env`. Isi `ALLOWED_CHAT_IDS` hanya dengan grup yang diizinkan. Bot menerapkan rate limit 30 pesan/menit/user. Untuk produksi multi-keluarga, gunakan satu database/schema terpisah per tenant dan tambahkan backup otomatis.
 
+## Dashboard web keluarga
+
+Dashboard tersedia di `https://domain-anda/keuangan/dashboard`. Isikan `WEB_PASSWORD` di `.env`, lalu masuk memakai password tersebut. Judul web sudah menggunakan **Finance Family — Catatan Keuangan Keluarga**.
+
+Di dashboard tersedia:
+
+- Pilihan periode minggu ini, bulan ini, semua transaksi, atau tanggal custom.
+- Filter tipe transaksi, kategori, pencarian deskripsi/user, serta sortir tanggal/nominal/deskripsi/kategori.
+- Kartu total pemasukan, pengeluaran, dan saldo bersih.
+- Ringkasan pengeluaran per kategori dan kontribusi per user.
+- Download CSV sesuai filter aktif, cetak atau simpan sebagai PDF dari browser.
+- Import CSV tanpa menghapus transaksi lama. Header yang diterima: `tanggal,tipe,nominal,deskripsi,kategori,user`.
+
+Contoh CSV import:
+
+```csv
+tanggal,tipe,nominal,deskripsi,kategori,user
+2026-10-30,pengeluaran,15000,belanja buah,Makanan & Minuman,suami
+2026-10-30,pemasukan,8000000,gaji,Pemasukan,suami
+```
+
+Untuk import, pilih file CSV di bagian **Data** lalu tekan **Import CSV**. Nominal diterima sebagai integer rupiah; format `15000` paling aman untuk file CSV.
+
 ## Pengembangan
 
 ```powershell

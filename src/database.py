@@ -27,7 +27,14 @@ class Database:
         if f.user_id: q+=" AND user_id=?"; p.append(f.user_id)
         if f.start: q+=" AND transaction_date>=?"; p.append(f.start.isoformat())
         if f.end: q+=" AND transaction_date<=?"; p.append(f.end.isoformat())
-        q+=" ORDER BY transaction_date, id"
+        if f.transaction_type: q+=" AND type=?"; p.append(f.transaction_type)
+        if f.category: q+=" AND category=?"; p.append(f.category)
+        if f.search:
+            q+=" AND (LOWER(description) LIKE ? OR LOWER(category) LIKE ? OR LOWER(username) LIKE ?)"
+            needle=f"%{f.search.lower()}%"; p.extend([needle, needle, needle])
+        sort_map={"transaction_date":"transaction_date", "amount":"amount", "description":"description", "category":"category", "type":"type", "username":"username", "id":"id"}
+        column=sort_map.get(f.sort_by, "transaction_date"); direction="ASC" if f.sort_dir.lower()=="asc" else "DESC"
+        q+=f" ORDER BY {column} {direction}, id DESC"
         with self._conn() as c: return [self._row(r) for r in c.execute(q,p).fetchall()]
     def find_latest_transaction(self,user_id,chat_id,now):
         with self._conn() as c: return self._row(c.execute("SELECT * FROM transactions WHERE user_id=? AND chat_id=? AND created_at>=? ORDER BY created_at DESC LIMIT 1",(user_id,chat_id,(now-timedelta(minutes=5)).isoformat())).fetchone())
