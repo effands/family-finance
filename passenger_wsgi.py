@@ -521,7 +521,7 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
           </div>
         </div>"""
 
-    emoji_quick_buttons = "".join(f'<button type="button" class="btn btn-secondary btn-sm" onclick="setEmojiQuick(\\'{em}\\')">{em}</button>' for em in ['🍔','⛽','🏠','💊','📱','👶','👕','💰','📈','🎓','🚗','✈️','🎁','🐾','🛒','💳'])
+    emoji_quick_buttons = "".join(f'<button type="button" class="btn btn-secondary btn-sm" onclick="setEmojiQuick(&quot;{em}&quot;)">{em}</button>' for em in ['🍔','⛽','🏠','💊','📱','👶','👕','💰','📈','🎓','🚗','✈️','🎁','🐾','🛒','💳'])
     body = f"""<div class="toast-container">{toast_html}</div>
 
 <main class="page-shell">
