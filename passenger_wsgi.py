@@ -88,7 +88,7 @@ def _dashboard_response(environ, start_response):
 
 
 def application(environ, start_response):
-    if environ.get("PATH_INFO", "").endswith("/dashboard") or environ.get("PATH_INFO", "").endswith("/export.csv"):
+    if environ.get("PATH_INFO", "").endswith("/dashboard") or environ.get("PATH_INFO", "").endswith("/export") or environ.get("PATH_INFO", "").endswith("/export.xlsx"):
         return _dashboard_response(environ, start_response)
     if environ.get("REQUEST_METHOD") == "GET":
         try:
