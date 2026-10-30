@@ -639,8 +639,6 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
             <option value="gemini-2.0-flash" {'selected' if gemini_model_val == 'gemini-2.0-flash' else ''}>gemini-2.0-flash (Flash Generasi 2.0)</option>
             <option value="gemini-2.0-flash-lite" {'selected' if gemini_model_val == 'gemini-2.0-flash-lite' else ''}>gemini-2.0-flash-lite (Model lama — ketersediaan tergantung Google)</option>
             <option value="gemini-2.5-flash" {'selected' if gemini_model_val == 'gemini-2.5-flash' else ''}>gemini-2.5-flash (Flash Generasi 2.5)</option>
-            <option value="gemini-2.5-flash-lite" {'selected' if gemini_model_val == 'gemini-2.5-flash-lite' else ''}>gemini-2.5-flash-lite (Model lama — ketersediaan tergantung Google)</option>
-            <option value="gemini-2.5-pro" {'selected' if gemini_model_val == 'gemini-2.5-pro' else ''}>gemini-2.5-pro (Analisis Mendalam)</option>
           </select>
           <div class="setting-help-text">
             Pilih model untuk membaca struk, lalu simpan konfigurasi. Opsi generasi baru dan lama tersedia untuk pengujian; model lama yang sudah dihentikan Google akan ditolak API.

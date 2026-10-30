@@ -53,7 +53,7 @@ def extract_receipt(image_bytes: bytes, api_keys: tuple[str,...], model: str, po
     # Telegram biasanya mengirim JPEG, tetapi tetap deteksi format agar PNG/WEBP
     # dari pengguna tidak dikirim dengan MIME type yang salah.
     mime_type = "image/png" if image_bytes.startswith(b"\x89PNG") else "image/webp" if image_bytes.startswith(b"RIFF") else "image/jpeg"
-    models = list(dict.fromkeys([model, "gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"]))
+    models = list(dict.fromkeys([model, "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash"]))
     for key in pool.ordered():
         for candidate in models:
             for attempt in range(2):
