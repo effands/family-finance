@@ -19,6 +19,12 @@ python -m src.main
 
 6. Tambahkan bot ke grup keluarga. Jika bot tidak merespons, pastikan ID grup ada di `.env` dan bot sudah diberi izin membaca pesan.
 
+### Menu modern dan upload struk
+
+Kirim `/start` untuk menampilkan tombol menu: catat transaksi, laporan minggu/bulan, rekap, undo, kategori, dan upload struk. Untuk OCR struk, isi `GEMINI_API_KEYS` dengan satu atau beberapa API key Gemini yang dipisahkan koma. Bot membaca foto dengan Gemini Vision, menampilkan preview nominal/deskripsi/tanggal/kategori, lalu baru menyimpan setelah tombol `✅ Simpan` ditekan. Jika Gemini gagal atau key kosong, bot tidak menyimpan otomatis dan meminta input manual.
+
+Jangan commit `.env` atau API key ke GitHub.
+
 ## Contoh penggunaan
 
 Ketik saja:
