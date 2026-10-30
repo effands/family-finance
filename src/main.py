@@ -23,7 +23,7 @@ from .formatting import format_rupiah, render_confirmation
 from .models import Transaction
 from .parser import ParseError, parse_message
 from .rate_limit import RateLimiter
-from .receipt_ai import GeminiKeyPool, extract_receipt
+from .receipt_ai import GeminiKeyPool, extract_receipt, transcribe_audio
 from .reports import build_expense_summary, build_income_summary, build_report
 
 MENU_KEYBOARD = ReplyKeyboardMarkup(
@@ -123,7 +123,7 @@ async def menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await message_handler(update, context)
 
 
-async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, text_override=None):
     s = context.application.bot_data["settings"]
     if not allowed(update, s):
         return
@@ -134,7 +134,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.application.bot_data["limiter"].allow(str(user.id), now):
         return await update.message.reply_text("⏳ Terlalu banyak pesan dalam waktu singkat. Mohon tunggu sebentar.")
 
-    text = update.message.text
+    text = text_override if text_override is not None else update.message.text
     try:
         parsed = parse_message(text, now, s.timezone)
     except ParseError as e:
@@ -401,6 +401,28 @@ async def receipt_photo_handler(update: Update, context: ContextTypes.DEFAULT_TY
         await status_msg.edit_text(f"⚠️ Gagal saat {stage}: {detail}. Silakan coba lagi.", read_timeout=60)
 
 
+async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    s = context.application.bot_data["settings"]
+    if not allowed(update, s):
+        return
+    if not s.gemini_api_keys:
+        return await update.message.reply_text("🎙️ Tambahkan Gemini API Key terlebih dahulu di Pengaturan.")
+    status = await update.message.reply_text("🎙️ Mendengarkan suara Anda...")
+    try:
+        audio_file = await update.message.voice.get_file(read_timeout=60, connect_timeout=30)
+        audio = await audio_file.download_as_bytearray(read_timeout=60, connect_timeout=30)
+        current = load_settings(context.application.bot_data["db"].path)
+        transcript = await asyncio.to_thread(
+            transcribe_audio, bytes(audio), current.gemini_api_keys, current.gemini_model,
+            context.application.bot_data["gemini_pool"],
+        )
+        await status.edit_text(f"🎙️ Terbaca: _{transcript}_\n\nMencatat transaksi...", parse_mode="Markdown")
+        await message_handler(update, context, transcript)
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Voice failed: %s", exc)
+        await status.edit_text(f"⚠️ Gagal membaca voice: {str(exc)[:180]}")
+
+
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -511,6 +533,7 @@ def build_app():
 
     app.add_handler(CallbackQueryHandler(callback_router))
     app.add_handler(MessageHandler(filters.PHOTO, receipt_photo_handler))
+    app.add_handler(MessageHandler(filters.VOICE, voice_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, menu_text))
     return app
 

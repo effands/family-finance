@@ -12,6 +12,30 @@ PROMPT = """Baca struk belanja ini. Balas HANYA JSON valid tanpa markdown:
 {"amount": integer rupiah, "description": string, "date": "YYYY-MM-DD" or null, "category": string}
 Jika nominal tidak jelas, amount harus 0. description singkat (nama toko/isi utama). category pilih salah satu: Makanan & Minuman, Transportasi, Rumah & Utilitas, Kesehatan, Pulsa & Digital, Anak, Belanja, Pemasukan, Lain-lain."""
 
+AUDIO_PROMPT = "Transkripsikan audio Bahasa Indonesia ini secara tepat. Balas hanya kalimat yang diucapkan, tanpa penjelasan tambahan."
+
+def transcribe_audio(audio_bytes: bytes, api_keys: tuple[str, ...], model: str, pool=None) -> str:
+    pool = pool or GeminiKeyPool(api_keys, model)
+    pool.update(api_keys, model)
+    last = None
+    for key in pool.ordered():
+        client = None
+        try:
+            client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=45_000))
+            response = client.models.generate_content(
+                model=model,
+                contents=[AUDIO_PROMPT, types.Part.from_bytes(data=audio_bytes, mime_type="audio/ogg")],
+            )
+            text = (response.text or "").strip()
+            if text:
+                return text
+        except Exception as exc:
+            last = exc
+        finally:
+            if client is not None and hasattr(client, "close"):
+                client.close()
+    raise RuntimeError(f"Transkripsi Gemini gagal: {last}")
+
 def _clean_json(text: str) -> dict:
     text=text.strip().removeprefix("```json").removesuffix("```").strip()
     data=json.loads(text)
