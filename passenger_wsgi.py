@@ -1,7 +1,6 @@
 """Passenger WSGI entrypoint for Telegram webhook and family finance dashboard.
 
-Sistem Manajemen Keuangan Personal & Pembukuan Keluarga Terpadu.
-Dilengkapi modul Dasbor Analitik & Pengaturan Sistem (Kategori, Gemini AI, Keamanan).
+Finance Family — Dibuat oleh effands ~ ziqva.com team with love family @2026.
 """
 import csv
 import hashlib
@@ -18,19 +17,42 @@ from urllib.request import Request, urlopen
 from src.categorizer import categorize
 from src.config import load_settings
 from src.database import Database
-from src.formatting import format_rupiah, render_confirmation
+from src.export_report import generate_excel, generate_pdf
+from src.formatting import format_date_id, format_rupiah, render_confirmation
 from src.models import Category, Transaction, TransactionFilters
 from src.parser import ParseError, parse_message
+from src.reports import build_expense_summary, build_income_summary, build_report
 
 TITLE = "Finance Family — Sistem Manajemen Keuangan Keluarga"
+CREDIT_HTML = '<footer class="app-footer"><div class="footer-container"><div class="footer-brand">Finance Family · Sistem Manajemen Keuangan Personal & Keluarga</div><div class="footer-credit">Dibuat oleh <strong>effands</strong> ~ <a href="https://ziqva.com" target="_blank" rel="noopener">ziqva.com</a> team with love family @2026 ❤️</div></div></footer>'
 
-BULAN_ID = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+HELP_TEXT = """🏛️ *FINANCE FAMILY — COMMAND CENTER*
+*Sistem Pembukuan & Tata Kelola Keuangan Keluarga*
+━━━━━━━━━━━━━━━━━━━━━━
+Kirim pesan teks transaksi atau unggah foto struk belanja untuk pencatatan otomatis.
 
+💡 *Contoh Format Teks Cepat:*
+• `bensin 50rb`
+• `belanja sayur 45rb kemarin`
+• `makan malam nas got 26700`
+• `gaji bulanan masuk 10jt`
+• `bayar listrik pln 350.000`
 
-def _format_date_id(d: date) -> str:
-    if not d:
-        return "-"
-    return f"{d.day:02d} {BULAN_ID[d.month]} {d.year}"
+📊 *Perintah Laporan & Informasi:*
+• `/rekap` atau `/saldo` — Ringkasan kas bulan berjalan
+• `/pemasukan` — Rincian mutasi uang masuk
+• `/pengeluaran` — Rincian belanja per pos kategori
+• `/hari`, `/minggu`, `/bulan`, `/tahun`, `/semua` — Laporan berkala
+• `/kategori` — Daftar kategori & kata kunci aktif
+
+🛠️ *Perintah Koreksi Transaksi (CRUD):*
+• `/undo` — Batalkan catatan terakhir Anda
+• `/hapus <ID>` — Hapus transaksi (Contoh: `/hapus 42`)
+• `/edit <ID> nominal|deskripsi|kategori <nilai>`
+• `/tambahkategori <Nama> <kata1,kata2>`
+• `/hapuskategori <Nama>`
+━━━━━━━━━━━━━━━━━━━━━━
+✨ _Dibuat oleh effands ~ ziqva.com team with love family @2026_"""
 
 
 def _monogram(name: str) -> str:
@@ -66,18 +88,48 @@ def _svg_icon(name: str) -> str:
         "shield": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
         "edit": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>',
         "key": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>',
+        "file-pdf": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M10 12h1a1.5 1.5 0 0 1 1.5 1.5v0a1.5 1.5 0 0 1-1.5 1.5H10v-3z"/><path d="M15 12h2a1.5 1.5 0 0 1 1.5 1.5v0a1.5 1.5 0 0 1-1.5 1.5h-1"/><path d="M6 12v3"/></svg>',
     }
     return icons.get(name, "")
 
 
-def _send_message(chat_id, text):
+def _send_telegram(chat_id: str, text: str, reply_markup: dict | None = None, parse_mode: str = "Markdown"):
     token = os.environ.get("BOT_TOKEN")
     if not token or not chat_id:
         return
-    body = urlencode({"chat_id": chat_id, "text": text}).encode()
-    req = Request(f"https://api.telegram.org/bot{token}/sendMessage", data=body, method="POST")
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": parse_mode,
+    }
+    if reply_markup:
+        payload["reply_markup"] = json.dumps(reply_markup)
+    req = Request(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data=urlencode(payload).encode("utf-8"),
+        method="POST",
+    )
     try:
-        with urlopen(req, timeout=20):
+        with urlopen(req, timeout=15):
+            pass
+    except Exception:
+        pass
+
+
+def _answer_callback_query(callback_query_id: str, text: str = ""):
+    token = os.environ.get("BOT_TOKEN")
+    if not token or not callback_query_id:
+        return
+    payload = {"callback_query_id": callback_query_id}
+    if text:
+        payload["text"] = text
+    req = Request(
+        f"https://api.telegram.org/bot{token}/answerCallbackQuery",
+        data=urlencode(payload).encode("utf-8"),
+        method="POST",
+    )
+    try:
+        with urlopen(req, timeout=15):
             pass
     except Exception:
         pass
@@ -137,14 +189,20 @@ def _update_env_file(key: str, value: str, env_path: str = ".env"):
 
 
 def _test_gemini_connection(api_key: str, model: str) -> tuple[bool, str]:
-    keys=tuple(x.strip() for x in api_key.split(",") if x.strip())
-    if not keys:
+    clean_key = (api_key.split(",")[0] or "").strip()
+    if not clean_key:
         return False, "Kunci API Gemini belum diisi."
     try:
-        from src.receipt_ai import GeminiKeyPool
-        pool=GeminiKeyPool(keys, model or "gemini-3.8-flash")
-        ok,msg=pool.test()
-        return (True, f"Koneksi berhasil. {len(keys)} key aktif, failover siap.") if ok else (False,msg)
+        from google import genai
+
+        client = genai.Client(api_key=clean_key)
+        response = client.models.generate_content(
+            model=model or "gemini-2.0-flash",
+            contents="Tes koneksi. Jawab 'OK'.",
+        )
+        if response and response.text:
+            return True, "Koneksi berhasil dan model AI merespons dengan normal."
+        return True, "Koneksi berhasil terhubung ke server Google Gemini."
     except Exception as exc:
         return False, str(exc)
 
@@ -193,11 +251,11 @@ def _auth_page(error=""):
         <div class="auth-features-list">
           <div class="auth-feature-item"><span class="auth-feature-check">✓</span><span>Pencatatan multi-pengguna dengan integrasi bot Telegram</span></div>
           <div class="auth-feature-item"><span class="auth-feature-check">✓</span><span>Alokasi pengeluaran per kategori & kontribusi anggota</span></div>
-          <div class="auth-feature-item"><span class="auth-feature-check">✓</span><span>Laporan arus kas berkala, ekspor CSV & berkas cetak PDF</span></div>
+          <div class="auth-feature-item"><span class="auth-feature-check">✓</span><span>Laporan arus kas berkala, ekspor PDF & berkas Excel</span></div>
         </div>
       </div>
       <div style="font-size: 12px; color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px;">
-        Finance Family Private Infrastructure · Keamanan & Privasi Terjamin
+        Finance Family · Dibuat oleh effands ~ ziqva.com team with love family @2026
       </div>
     </section>
     <section class="auth-form-card">
@@ -332,7 +390,7 @@ def _import_csv(db, csv_text, chat_id):
                     chat_id,
                     tx_type,
                     amount,
-                    row["deskripsi"] or "Impor CSV",
+                    row["deskripsi"] or "Impor Data",
                     row["kategori"] or "Lain-lain",
                     tx_date,
                     datetime.now(),
@@ -374,7 +432,7 @@ def _rows_html(rows, active_chat_id=""):
 
         output.append(f"""<tr class="tx-row" data-id="{x.id}">
           <td class="tabular-nums" style="color: var(--ink-muted); font-size: 12px; font-weight: 600;">#{x.id}</td>
-          <td class="tabular-nums" style="white-space: nowrap; font-weight: 500;">{_format_date_id(x.transaction_date)}</td>
+          <td class="tabular-nums" style="white-space: nowrap; font-weight: 500;">{format_date_id(x.transaction_date)}</td>
           <td>{type_badge}</td>
           <td><span class="category-chip">{cat_escaped}</span></td>
           <td style="font-weight: 600; color: var(--ink-primary); max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{desc_escaped}">{desc_escaped}</td>
@@ -396,29 +454,26 @@ def _rows_html(rows, active_chat_id=""):
 
 def _render_settings_page(db: Database, settings, active_tab: str, toast_html: str):
     categories = db.list_categories()
-    
-    # Active Gemini Configurations
+
     gemini_keys_val = db.get_setting("gemini_api_keys", "") or os.getenv("GEMINI_API_KEYS", os.getenv("GEMINI_API_KEY", ""))
-    gemini_model_val = db.get_setting("gemini_model", "") or os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+    gemini_model_val = db.get_setting("gemini_model", "") or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     gemini_active = bool(gemini_keys_val.strip())
-    
-    # Tab active classes
+
     tab_cat_active = "active" if active_tab == "categories" else ""
     tab_gemini_active = "active" if active_tab == "gemini" else ""
     tab_sec_active = "active" if active_tab == "security" else ""
     tab_sys_active = "active" if active_tab == "system" else ""
 
-    # Categories Table Content
     cat_rows = []
     for c in categories:
         tx_count = db.count_category_transactions(c.name)
         type_label = "Pengeluaran" if c.type == "expense" else ("Pemasukan" if c.type == "income" else "Pemasukan & Pengeluaran")
         type_cls = "expense" if c.type == "expense" else ("income" if c.type == "income" else "neutral")
         kw_badges = "".join(f'<span class="keyword-badge">{html.escape(k)}</span>' for k in c.keywords) or '<span style="color:var(--ink-faint); font-size:12px;">(Tanpa kata kunci)</span>'
-        
+
         is_default = c.name == "Lain-lain"
         delete_btn = f"""<button class="btn btn-ghost btn-sm" type="button" style="color: var(--expense-main);" title="Hapus Kategori" onclick="confirmDeleteCategory('{html.escape(c.name.replace("'", "\\'"))}')">{_svg_icon("trash")}</button>""" if not is_default else '<span style="font-size:11px; color:var(--ink-faint); font-style:italic;">Bawaan sistem</span>'
-        
+
         cat_rows.append(f"""<tr>
           <td style="font-size: 20px; width: 50px; text-align: center;">{c.emoji}</td>
           <td style="font-weight: 700; color: var(--ink-primary);">{html.escape(c.name)}</td>
@@ -432,10 +487,9 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
             {delete_btn}
           </td>
         </tr>""")
-    
+
     categories_table_html = "".join(cat_rows)
 
-    # Gemini Callout Box
     if gemini_active:
         gemini_status_html = f"""<div class="status-callout active">
           {_svg_icon("check")}
@@ -456,7 +510,6 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
     body = f"""<div class="toast-container">{toast_html}</div>
 
 <main class="page-shell">
-  <!-- Topbar Header -->
   <header class="topbar">
     <div class="brand-lockup">
       <div class="brand-mark">FF</div>
@@ -484,7 +537,6 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
     </div>
   </header>
 
-  <!-- Settings Horizontal Tabs -->
   <nav class="settings-nav-tabs">
     <a class="settings-tab-btn {tab_cat_active}" href="/keuangan/settings?tab=categories">
       🏷️ Kategori Transaksi
@@ -564,14 +616,12 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
         <div class="form-group">
           <label for="gemini-model">Pilihan Model Gemini</label>
           <select class="form-control" id="gemini-model" name="gemini_model">
-            <option value="gemini-3.8-flash" {'selected' if gemini_model_val == 'gemini-3.8-flash' else ''}>gemini-3.8-flash (Direkomendasikan)</option>
-            <option value="gemini-3.6-flash" {'selected' if gemini_model_val == 'gemini-3.6-flash' else ''}>gemini-3.6-flash (Stabil & multimodal)</option>
-            <option value="gemini-3.7-flash" {'selected' if gemini_model_val == 'gemini-3.7-flash' else ''}>gemini-3.7-flash</option>
+            <option value="gemini-2.0-flash" {'selected' if gemini_model_val == 'gemini-2.0-flash' else ''}>gemini-2.0-flash (Direkomendasikan: Sangat Cepat & Akurat)</option>
             <option value="gemini-1.5-flash" {'selected' if gemini_model_val == 'gemini-1.5-flash' else ''}>gemini-1.5-flash (Ringan & Cepat)</option>
             <option value="gemini-1.5-pro" {'selected' if gemini_model_val == 'gemini-1.5-pro' else ''}>gemini-1.5-pro (Analisis Mendalam)</option>
           </select>
           <div class="setting-help-text">
-            Gemini 3.8 Flash direkomendasikan untuk pembacaan struk multimodal; Gemini 3.6 Flash tersedia sebagai alternatif.
+            Model *gemini-2.0-flash* dirancang khusus untuk inferensi multimodal berkecepatan tinggi dengan kuota gratis yang memadai.
           </div>
         </div>
 
@@ -616,7 +666,7 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
         </div>
 
         <div style="background-color: var(--bg-surface-soft); padding: 12px 16px; border-radius: 8px; font-size: 12.5px; color: var(--ink-secondary); border: 1px solid var(--border-subtle);">
-          🔒 Kata sandi dienkripsi menggunakan algoritma cryptographic hashing SHA-256 dan disimpan secara terlindung di basis data lokal.
+          🔒 Kata sandi dienkripsi menggunakan cryptographic hashing SHA-256 dan disimpan secara terlindung di basis data lokal.
         </div>
 
         <div>
@@ -670,6 +720,7 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
       </table>
     </section>
   </div>
+  {CREDIT_HTML}
 </main>
 
 <!-- Modal: Tambah / Sunting Kategori -->
@@ -920,7 +971,7 @@ def _dashboard_response(environ, start_response):
         length = int(environ.get("CONTENT_LENGTH") or 0)
         form = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "replace"))
         keys = form.get("gemini_api_keys", [""])[0].strip()
-        model = form.get("gemini_model", ["gemini-3.8-flash"])[0].strip()
+        model = form.get("gemini_model", ["gemini-2.0-flash"])[0].strip()
         db.set_setting("gemini_api_keys", keys)
         db.set_setting("gemini_model", model)
         os.environ["GEMINI_API_KEYS"] = keys
@@ -935,7 +986,7 @@ def _dashboard_response(environ, start_response):
         length = int(environ.get("CONTENT_LENGTH") or 0)
         form = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "replace"))
         keys = form.get("gemini_api_keys", [""])[0].strip()
-        model = form.get("gemini_model", ["gemini-3.8-flash"])[0].strip()
+        model = form.get("gemini_model", ["gemini-2.0-flash"])[0].strip()
         if not keys:
             start_response("303 See Other", [("Location", "/keuangan/settings?tab=gemini&toast=gemini_err_empty")])
             return [b""]
@@ -1203,8 +1254,35 @@ def _dashboard_response(environ, start_response):
     income, expense, categories, users, cat_counts, user_counts = _summary(rows)
     balance = income - expense
     savings_rate = round(((income - expense) / income) * 100, 1) if income > 0 else (0.0 if expense > 0 else 100.0)
+    summary_data = {"income": income, "expense": expense, "savings_rate": savings_rate}
 
-    # Export CSV
+    # EXPORT: EXCEL (.xlsx)
+    if path.endswith(("/export.xlsx", "/export.excel")):
+        xlsx_bytes = generate_excel(rows, summary_data, period)
+        start_response(
+            "200 OK",
+            [
+                ("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                ("Content-Disposition", f'attachment; filename="laporan_keuangan_family_{period}_{date.today().isoformat()}.xlsx"'),
+                ("Content-Length", str(len(xlsx_bytes))),
+            ],
+        )
+        return [xlsx_bytes]
+
+    # EXPORT: PDF STANDALONE LAPORAN
+    if path.endswith("/export.pdf"):
+        pdf_bytes = generate_pdf(rows, summary_data, period)
+        start_response(
+            "200 OK",
+            [
+                ("Content-Type", "application/pdf"),
+                ("Content-Disposition", f'attachment; filename="laporan_keuangan_family_{period}_{date.today().isoformat()}.pdf"'),
+                ("Content-Length", str(len(pdf_bytes))),
+            ],
+        )
+        return [pdf_bytes]
+
+    # Legacy CSV Export Route
     if path.endswith("/export.csv"):
         stream = io.StringIO()
         writer = csv.writer(stream)
@@ -1252,8 +1330,8 @@ def _dashboard_response(environ, start_response):
         <a class="header-nav-link active" href="/keuangan/dashboard">{_svg_icon("layout-dashboard")} Dasbor</a>
         <a class="header-nav-link" href="/keuangan/settings">{_svg_icon("settings")} Pengaturan</a>
       </nav>
-      <a class="btn btn-primary" href="/keuangan/export.csv?{export_q}">{_svg_icon("download")} Unduh CSV</a>
-      <button class="btn btn-secondary" onclick="window.print()">{_svg_icon("printer")} Cetak Laporan</button>
+      <a class="btn btn-primary" href="/keuangan/export.pdf?{export_q}">{_svg_icon("file-pdf")} Unduh PDF</a>
+      <a class="btn btn-secondary" href="/keuangan/export.xlsx?{export_q}">{_svg_icon("download")} Unduh Excel (.xlsx)</a>
       <a class="btn btn-ghost" href="/keuangan/dashboard?{export_q}">Kembali ke Dasbor</a>
     </div>
   </header>
@@ -1276,6 +1354,7 @@ def _dashboard_response(environ, start_response):
       </table>
     </div>
   </section>
+  {CREDIT_HTML}
 </main>"""
         status, headers, payload = _html_page("Daftar Lengkap Transaksi — Finance Family", body)
         start_response(status, headers)
@@ -1459,7 +1538,7 @@ def _dashboard_response(environ, start_response):
         "balance": max(0, balance),
         "catLabels": chart_cat_labels,
         "catData": chart_cat_data,
-        "hasData": bool(income > 0 or expense > 0)
+        "hasData": bool(income > 0 or expense > 0),
     })
 
     # Main Dashboard Body
@@ -1489,14 +1568,14 @@ def _dashboard_response(environ, start_response):
         {_svg_icon("plus")} Catat Transaksi
       </button>
       <button class="btn btn-secondary" type="button" onclick="openImportModal()">
-        {_svg_icon("upload")} Impor CSV
+        {_svg_icon("upload")} Impor Berkas
       </button>
-      <a class="btn btn-secondary" href="/keuangan/export.csv?{export_q}">
-        {_svg_icon("download")} Ekspor CSV
+      <a class="btn btn-primary" href="/keuangan/export.pdf?{export_q}">
+        {_svg_icon("file-pdf")} Ekspor PDF
       </a>
-      <button class="btn btn-ghost" type="button" onclick="window.print()">
-        {_svg_icon("printer")} Cetak
-      </button>
+      <a class="btn btn-secondary" href="/keuangan/export.xlsx?{export_q}">
+        {_svg_icon("download")} Ekspor Excel
+      </a>
       <a class="btn btn-ghost" href="/keuangan/logout" title="Keluar dari sesi ini" onclick="return confirm('Keluar dari sesi dasbor keuangan?')">
         {_svg_icon("logout")}
       </a>
@@ -1516,7 +1595,6 @@ def _dashboard_response(environ, start_response):
 
   <!-- Executive Financial KPI Metric Cards -->
   <section class="metric-grid">
-    <!-- Card 1: Pemasukan -->
     <div class="metric-card card-income">
       <div class="metric-header">
         <div class="metric-meta">
@@ -1533,7 +1611,6 @@ def _dashboard_response(environ, start_response):
       </div>
     </div>
 
-    <!-- Card 2: Pengeluaran -->
     <div class="metric-card card-expense">
       <div class="metric-header">
         <div class="metric-meta">
@@ -1550,7 +1627,6 @@ def _dashboard_response(environ, start_response):
       </div>
     </div>
 
-    <!-- Card 3: Saldo Bersih -->
     <div class="metric-card card-balance">
       <div class="metric-header">
         <div class="metric-meta">
@@ -1567,7 +1643,6 @@ def _dashboard_response(environ, start_response):
       </div>
     </div>
 
-    <!-- Card 4: Rasio Tabungan -->
     <div class="metric-card card-stats">
       <div class="metric-header">
         <div class="metric-meta">
@@ -1614,7 +1689,6 @@ def _dashboard_response(environ, start_response):
 
   <!-- Detailed Categorical & User Breakdown Panels -->
   <section class="breakdown-grid">
-    <!-- Category Breakdown Panel -->
     <div class="panel">
       <div class="panel-header">
         <div class="panel-title-group">
@@ -1627,7 +1701,6 @@ def _dashboard_response(environ, start_response):
       </div>
     </div>
 
-    <!-- User Contribution Panel -->
     <div class="panel">
       <div class="panel-header">
         <div class="panel-title-group">
@@ -1679,6 +1752,8 @@ def _dashboard_response(environ, start_response):
       </table>
     </div>
   </section>
+
+  {CREDIT_HTML}
 </main>
 
 <!-- Modal: Tambah Transaksi Manual -->
@@ -1740,7 +1815,7 @@ def _dashboard_response(environ, start_response):
   </div>
 </div>
 
-<!-- Modal: Impor CSV -->
+<!-- Modal: Impor Berkas -->
 <div class="modal-overlay" id="modal-import-csv">
   <div class="modal-dialog">
     <div class="modal-header">
@@ -1802,10 +1877,8 @@ def _dashboard_response(environ, start_response):
   </div>
 </div>
 
-<!-- Embedded JSON Data for Chart.js -->
 <script id="chart-data" type="application/json">{chart_json_data}</script>
 
-<!-- Interactive Dashboard Client Scripts -->
 <script>
 function dismissToast(id) {{
   const el = document.getElementById(id);
@@ -1887,12 +1960,9 @@ function filterTableLive() {{
   }}
 }}
 
-// Initialize Charts
 window.addEventListener('DOMContentLoaded', () => {{
   try {{
     const rawData = JSON.parse(document.getElementById('chart-data').textContent);
-    
-    // Bar Chart: Pemasukan vs Pengeluaran
     const ctxBar = document.getElementById('cashflowBarChart');
     if (ctxBar && window.Chart) {{
       new Chart(ctxBar, {{
@@ -1932,14 +2002,12 @@ window.addEventListener('DOMContentLoaded', () => {{
       }});
     }}
 
-    // Doughnut Chart: Categories Breakdown
     const ctxDonut = document.getElementById('categoryDonutChart');
     if (ctxDonut && window.Chart) {{
       const donutColors = [
         '#ef4444', '#f97316', '#f59e0b', '#10b981', '#06b6d4',
         '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#64748b'
       ];
-      
       const labels = rawData.catLabels.length ? rawData.catLabels : ['Belum Ada Pengeluaran'];
       const dataValues = rawData.catData.length ? rawData.catData : [1];
       const bgColors = rawData.catData.length ? donutColors.slice(0, labels.length) : ['#e2e8f0'];
@@ -2003,9 +2071,10 @@ def application(environ, start_response):
         "/settings/password/save",
         "/excel",
         "/fullscreen",
-        "/export.csv",
-        "/export",
         "/export.xlsx",
+        "/export.excel",
+        "/export.pdf",
+        "/export.csv",
         "/import",
         "/template.csv",
         "/transaction/create",
@@ -2026,43 +2095,210 @@ def application(environ, start_response):
         start_response("200 OK", [("Content-Type", "text/plain"), ("Content-Length", str(len(payload)))])
         return [payload]
 
+    # Process Telegram Webhook Updates
     chat_id = ""
     try:
         length = int(environ.get("CONTENT_LENGTH") or 0)
-        update = json.loads(environ["wsgi.input"].read(length) or b"{}")
+        raw_body = environ["wsgi.input"].read(length) or b"{}"
+        update = json.loads(raw_body)
+        settings = load_settings()
+        db = Database(settings.database_path)
+        db.initialize()
+
+        # 1. Handle Callback Query (Inline Buttons: Undo, Rekap, dll)
+        if "callback_query" in update:
+            cq = update["callback_query"]
+            cq_id = str(cq.get("id", ""))
+            _answer_callback_query(cq_id)
+            cq_data = cq.get("data", "")
+            msg = cq.get("message") or {}
+            chat_id = str(msg.get("chat", {}).get("id", ""))
+            sender = cq.get("from") or {}
+            user_id = str(sender.get("id", ""))
+            now = datetime.now()
+
+            if chat_id in settings.allowed_chat_ids:
+                if cq_data.startswith("cb:undo:"):
+                    target_id = cq_data.split("cb:undo:")[-1]
+                    if target_id == "last":
+                        tx = db.find_latest_transaction(user_id, chat_id, now)
+                        if tx and db.delete_transaction(tx.id, user_id, chat_id):
+                            _send_telegram(chat_id, f"🗑️ *Catatan mutasi #{tx.id} ({tx.description}) berhasil dibatalkan.*")
+                        else:
+                            _send_telegram(chat_id, "❓ Tidak ada catatan mutasi milik Anda dalam 5 menit terakhir untuk dibatalkan.")
+                    else:
+                        try:
+                            tx_id = int(target_id)
+                            tx = db.get_transaction(tx_id)
+                            if tx and db.delete_transaction_web(tx_id, chat_id):
+                                _send_telegram(chat_id, f"🗑️ *Catatan mutasi #{tx_id} ({tx.description} — {format_rupiah(tx.amount)}) berhasil dibatalkan.*")
+                            else:
+                                _send_telegram(chat_id, "❓ Catatan transaksi telah dihapus sebelumnya.")
+                        except ValueError:
+                            pass
+                elif cq_data == "cb:rekap:bulan":
+                    _send_telegram(chat_id, build_report(db, "bulan", chat_id, now))
+                elif cq_data == "cb:rekap:minggu":
+                    _send_telegram(chat_id, build_report(db, "minggu", chat_id, now))
+                elif cq_data == "cb:income:bulan":
+                    _send_telegram(chat_id, build_income_summary(db, chat_id, now, "bulan"))
+                elif cq_data == "cb:expense:bulan":
+                    _send_telegram(chat_id, build_expense_summary(db, chat_id, now, "bulan"))
+                elif cq_data == "cb:kategori":
+                    cats = db.list_categories()
+                    lines = ["🏷️ *KATEGORI TRANSAKSI KELUARGA*", "━━━━━━━━━━━━━━━━━━━━━━"] + [f"• {c.emoji} *{c.name}*" for c in cats] + ["━━━━━━━━━━━━━━━━━━━━━━", "✨ _ziqva.com team @2026_"]
+                    _send_telegram(chat_id, "\n".join(lines))
+                elif cq_data == "cb:bantuan":
+                    _send_telegram(chat_id, HELP_TEXT)
+
+            start_response("200 OK", [("Content-Type", "application/json")])
+            return [b'{"ok":true}']
+
+        # 2. Handle Text & Photo Messages
         message = update.get("message") or {}
         chat = message.get("chat") or {}
         sender = message.get("from") or {}
-        text = message.get("text") or ""
-        settings = load_settings()
+        text = (message.get("text") or "").strip()
         chat_id = str(chat.get("id", ""))
-        if chat_id in settings.allowed_chat_ids and text and not text.startswith("/"):
-            db = Database(settings.database_path)
-            db.initialize()
-            parsed = parse_message(text, datetime.now(), settings.timezone)
-            category = categorize(parsed.description, db.list_categories())
-            item = db.add_transaction(
-                Transaction(
-                    None,
-                    str(sender.get("id", "")),
-                    sender.get("username") or sender.get("first_name") or "user",
-                    chat_id,
-                    parsed.type,
-                    parsed.amount,
-                    parsed.description,
-                    category.name,
-                    parsed.transaction_date,
-                    datetime.now(),
+        user_id = str(sender.get("id", ""))
+        uname = sender.get("username") or sender.get("first_name") or "user"
+        now = datetime.now()
+
+        if chat_id in settings.allowed_chat_ids:
+            # Menu / Start Command
+            if text.startswith(("/start", "/menu", "/bantuan")):
+                inline_keys = {
+                    "inline_keyboard": [
+                        [{"text": "📊 Rekap Bulan Ini", "callback_data": "cb:rekap:bulan"}, {"text": "💰 Saldo Kas", "callback_data": "cb:rekap:bulan"}],
+                        [{"text": "📈 Total Pemasukan", "callback_data": "cb:income:bulan"}, {"text": "📉 Total Pengeluaran", "callback_data": "cb:expense:bulan"}],
+                        [{"text": "📅 Rekap Pekan Ini", "callback_data": "cb:rekap:minggu"}, {"text": "🏷️ Daftar Kategori", "callback_data": "cb:kategori"}],
+                        [{"text": "↩️ Undo Terakhir", "callback_data": "cb:undo:last"}, {"text": "❓ Panduan Bantuan", "callback_data": "cb:bantuan"}],
+                    ]
+                }
+                welcome = f"👋 *Halo, @{uname.lstrip('@')}!*\nSelamat datang di *Finance Family*.\n\n" + HELP_TEXT
+                _send_telegram(chat_id, welcome, reply_markup=inline_keys)
+
+            # Income Summary Command
+            elif text.startswith(("/pemasukan", "/masuk")):
+                _send_telegram(chat_id, build_income_summary(db, chat_id, now, "bulan"))
+
+            # Expense Summary Command
+            elif text.startswith(("/pengeluaran", "/keluar")):
+                _send_telegram(chat_id, build_expense_summary(db, chat_id, now, "bulan"))
+
+            # Recap & Balance Command
+            elif text.startswith(("/rekap", "/saldo")):
+                _send_telegram(chat_id, build_report(db, "bulan", chat_id, now))
+
+            # Periodic Report Command
+            elif text.startswith(("/laporan", "/hari", "/minggu", "/bulan", "/tahun", "/all", "/semua")):
+                parts = text.split()
+                cmd = parts[0].lstrip("/")
+                kind = parts[1] if len(parts) > 1 else (cmd if cmd in ("hari", "minggu", "bulan", "tahun", "all") else "bulan")
+                _send_telegram(chat_id, build_report(db, kind, chat_id, now))
+
+            # Undo Command
+            elif text.startswith("/undo"):
+                tx = db.find_latest_transaction(user_id, chat_id, now)
+                if tx and db.delete_transaction(tx.id, user_id, chat_id):
+                    _send_telegram(chat_id, f"✅ *Catatan Terakhir Dibatalkan*\nTransaksi #{tx.id} ({tx.description} — {format_rupiah(tx.amount)}) telah dihapus dari pembukuan.")
+                else:
+                    _send_telegram(chat_id, "❓ Tidak ditemukan catatan mutasi milik Anda dalam 5 menit terakhir untuk dibatalkan.")
+
+            # Delete Command
+            elif text.startswith("/hapus"):
+                parts = text.split()
+                if len(parts) > 1 and parts[1].replace("#", "").isdigit():
+                    tx_id = int(parts[1].replace("#", ""))
+                    tx = db.get_transaction(tx_id)
+                    if tx and (tx.user_id == user_id or str(tx.chat_id) == chat_id):
+                        db.delete_transaction_web(tx_id, chat_id)
+                        _send_telegram(chat_id, f"✅ *Catatan Mutasi Dihapus*\nTransaksi #{tx_id} ({tx.description} — {format_rupiah(tx.amount)}) berhasil dihapus dari sistem.")
+                    else:
+                        _send_telegram(chat_id, "❓ Catatan transaksi tidak ditemukan atau bukan bagian dari grup ini.")
+                else:
+                    _send_telegram(chat_id, "Format: `/hapus <ID_TRANSAKSI>`\nContoh: `/hapus 42`")
+
+            # Edit Command
+            elif text.startswith("/edit"):
+                parts = text.split()
+                if len(parts) >= 4 and parts[1].replace("#", "").isdigit():
+                    tx_id = int(parts[1].replace("#", ""))
+                    field = parts[2].lower()
+                    val = " ".join(parts[3:])
+                    changes = {}
+                    if field in ("nominal", "amount"):
+                        try:
+                            changes["amount"] = int(val.replace(".", "").replace(",", "").replace("Rp", "").strip())
+                        except ValueError:
+                            _send_telegram(chat_id, "Nominal harus berupa angka valid.")
+                            parts = []
+                    elif field in ("deskripsi", "description"):
+                        changes["description"] = val
+                    elif field in ("kategori", "category"):
+                        changes["category"] = val
+                    if changes:
+                        ok = db.update_transaction(tx_id, user_id, chat_id, **changes) or db.update_transaction(tx_id, "web", chat_id, **changes)
+                        if ok:
+                            _send_telegram(chat_id, f"✅ *Catatan #{tx_id} Berhasil Diperbarui.*")
+                        else:
+                            _send_telegram(chat_id, "❓ Catatan transaksi tidak ditemukan atau bukan milik Anda.")
+                else:
+                    _send_telegram(chat_id, "Format: `/edit <ID> nominal|deskripsi|kategori <nilai>`")
+
+            # Categories Command
+            elif text.startswith("/kategori"):
+                cats = db.list_categories()
+                lines = ["🏷️ *DAFTAR KATEGORI TRANSAKSI AKTIF*", "━━━━━━━━━━━━━━━━━━━━━━"]
+                for c in cats:
+                    lines.append(f"• {c.emoji} *{c.name}*")
+                lines.append("━━━━━━━━━━━━━━━━━━━━━━\n✨ _ziqva.com team with love family @2026_")
+                _send_telegram(chat_id, "\n".join(lines))
+
+            # Natural Language Transaction
+            elif text and not text.startswith("/"):
+                parsed = parse_message(text, now, settings.timezone)
+                category = categorize(parsed.description, db.list_categories())
+                tx = db.add_transaction(
+                    Transaction(
+                        None,
+                        user_id,
+                        uname,
+                        chat_id,
+                        parsed.type,
+                        parsed.amount,
+                        parsed.description,
+                        category.name,
+                        parsed.transaction_date,
+                        now,
+                    )
                 )
-            )
-            _send_message(chat_id, render_confirmation(item, sender.get("username") or sender.get("first_name") or "user"))
-        elif chat_id in settings.allowed_chat_ids and text.startswith("/start"):
-            _send_message(chat_id, "👋 Halo! Kirim contoh transaksi seperti: bensin 50rb atau gaji masuk 8jt")
+
+                # Month balance calculation
+                m_start = now.date().replace(day=1)
+                m_end = (m_start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+                m_rows = db.list_transactions(TransactionFilters(chat_id, m_start, m_end))
+                m_inc = sum(r.amount for r in m_rows if r.type == "income")
+                m_exp = sum(r.amount for r in m_rows if r.type == "expense")
+                m_bal = m_inc - m_exp
+                bal_note = f"Saldo Bulan Ini: *{format_rupiah(m_bal)}*" + (" (Surplus)" if m_bal > 0 else (" (Defisit)" if m_bal < 0 else ""))
+
+                card = render_confirmation(tx, uname, bal_note)
+                action_markup = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "↩️ Batalkan / Undo", "callback_data": f"cb:undo:{tx.id}"},
+                            {"text": "📊 Rekap Saldo", "callback_data": "cb:rekap:bulan"},
+                        ]
+                    ]
+                }
+                _send_telegram(chat_id, card, reply_markup=action_markup)
+
         start_response("200 OK", [("Content-Type", "application/json")])
         return [b'{"ok":true}']
     except ParseError as exc:
         if chat_id:
-            _send_message(chat_id, f"❓ {exc}")
+            _send_telegram(chat_id, f"❓ {exc}")
         start_response("200 OK", [("Content-Type", "application/json")])
         return [b'{"ok":true}']
     except Exception:
