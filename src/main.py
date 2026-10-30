@@ -101,7 +101,9 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = f"@{user.username}" if user.username else (user.first_name or "Keluarga")
     welcome = f"👋 *Halo, {name}!*\nSelamat datang di *Finance Family*.\n\n" + HELP_TEXT
-    await update.message.reply_text(welcome, parse_mode="Markdown", reply_markup=get_command_inline_keyboard())
+    # Reply keyboard muncul langsung di bawah kolom ketik seperti menu bot pada
+    # umumnya; tetap bisa dipakai berdampingan dengan perintah slash.
+    await update.message.reply_text(welcome, parse_mode="Markdown", reply_markup=MENU_KEYBOARD)
 
 
 async def menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
