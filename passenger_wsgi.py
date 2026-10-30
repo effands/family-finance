@@ -2286,10 +2286,6 @@ def application(environ, start_response):
         return _dashboard_response(environ, start_response)
 
     if environ.get("REQUEST_METHOD") == "GET":
-        try:
-            _set_webhook()
-        except Exception:
-            pass
         payload = b"family-finance bot is online"
         start_response("200 OK", [("Content-Type", "text/plain"), ("Content-Length", str(len(payload)))])
         return [payload]

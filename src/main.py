@@ -488,7 +488,12 @@ def build_app():
     s = load_settings()
     db = Database(s.database_path)
     db.initialize()
-    app = Application.builder().token(s.bot_token).build()
+    async def clear_webhook(application):
+        # Bot keluarga berjalan dengan long polling; webhook web harus dilepas
+        # agar Telegram tidak mengirim update ke dua jalur sekaligus.
+        await application.bot.delete_webhook(drop_pending_updates=False)
+
+    app = Application.builder().token(s.bot_token).post_init(clear_webhook).build()
     app.bot_data.update(settings=s, db=db, limiter=RateLimiter(s.rate_limit), gemini_pool=GeminiKeyPool(s.gemini_api_keys, s.gemini_model))
 
     app.add_handler(CommandHandler(["start", "menu", "bantuan"], start_cmd))
