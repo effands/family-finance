@@ -6,7 +6,7 @@ from datetime import date
 from google import genai
 from google.genai import types
 
-GEMINI_TIMEOUT_MS = 120_000
+GEMINI_TIMEOUT_MS = 45_000
 
 PROMPT = """Baca struk belanja ini. Balas HANYA JSON valid tanpa markdown:
 {"amount": integer rupiah, "description": string, "date": "YYYY-MM-DD" or null, "category": string}
@@ -71,7 +71,7 @@ def extract_receipt(image_bytes: bytes, api_keys: tuple[str,...], model: str, po
                     detail = str(exc).lower()
                     # 503/429 biasanya sementara atau model sedang padat;
                     # coba ulang sebentar lalu pindah ke model cadangan.
-                    if attempt == 0 and ("503" in detail or "unavailable" in detail or "429" in detail or "resource_exhausted" in detail):
+                    if attempt == 0 and ("503" in detail or "504" in detail or "deadline" in detail or "unavailable" in detail or "429" in detail or "resource_exhausted" in detail):
                         time.sleep(1)
                         continue
                     break
