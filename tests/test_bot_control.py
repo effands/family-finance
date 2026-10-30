@@ -2,6 +2,7 @@ from pathlib import Path
 
 from src.bot_control import BotController
 import src.main as telegram_main
+from src.receipt_ai import GEMINI_TIMEOUT_MS
 
 
 def test_status_is_off_when_pid_file_is_missing(tmp_path):
@@ -28,4 +29,8 @@ def test_status_removes_stale_pid_file(tmp_path):
 def test_telegram_message_parser_is_available_to_worker():
     assert callable(telegram_main.parse_message)
     assert issubclass(telegram_main.ParseError, Exception)
+
+
+def test_receipt_ai_allows_time_for_vision_request():
+    assert GEMINI_TIMEOUT_MS >= 120_000
 

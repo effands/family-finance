@@ -5,6 +5,8 @@ from datetime import date
 from google import genai
 from google.genai import types
 
+GEMINI_TIMEOUT_MS = 120_000
+
 PROMPT = """Baca struk belanja ini. Balas HANYA JSON valid tanpa markdown:
 {"amount": integer rupiah, "description": string, "date": "YYYY-MM-DD" or null, "category": string}
 Jika nominal tidak jelas, amount harus 0. description singkat (nama toko/isi utama). category pilih salah satu: Makanan & Minuman, Transportasi, Rumah & Utilitas, Kesehatan, Pulsa & Digital, Anak, Belanja, Pemasukan, Lain-lain."""
@@ -34,7 +36,7 @@ class GeminiKeyPool:
                 # Client dibuat dan ditutup per percobaan. SDK google-genai
                 # dapat mewarisi transport yang sudah tertutup jika object
                 # client disimpan/reused lintas request WSGI.
-                with genai.Client(api_key=key) as client:
+                with genai.Client(api_key=key, http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_MS)) as client:
                     response=client.models.generate_content(model=self.model, contents="Tes koneksi. Jawab OK.")
                 if response and response.text: return True, "Koneksi berhasil."
             except Exception as exc: errors.append(str(exc))
@@ -47,7 +49,7 @@ def extract_receipt(image_bytes: bytes, api_keys: tuple[str,...], model: str, po
     last=None
     for key in pool.ordered():
         try:
-            with genai.Client(api_key=key) as client:
+            with genai.Client(api_key=key, http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_MS)) as client:
                 response=client.models.generate_content(model=model, contents=[types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"), PROMPT])
             return _clean_json(response.text or "")
         except Exception as exc:
