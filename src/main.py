@@ -515,6 +515,19 @@ def build_app():
         # Bot keluarga berjalan dengan long polling; webhook web harus dilepas
         # agar Telegram tidak mengirim update ke dua jalur sekaligus.
         await application.bot.delete_webhook(drop_pending_updates=False)
+        await application.bot.set_my_commands([
+            ("start", "Buka menu Finance Family"),
+            ("rekap", "Ringkasan bulan berjalan"),
+            ("saldo", "Lihat saldo kas"),
+            ("pemasukan", "Lihat total pemasukan"),
+            ("pengeluaran", "Lihat total pengeluaran"),
+            ("hari", "Laporan hari ini"),
+            ("minggu", "Laporan minggu ini"),
+            ("bulan", "Laporan bulan ini"),
+            ("kategori", "Daftar kategori"),
+            ("undo", "Batalkan catatan terakhir"),
+            ("bantuan", "Panduan penggunaan bot"),
+        ])
 
     app = Application.builder().token(s.bot_token).post_init(clear_webhook).build()
     app.bot_data.update(settings=s, db=db, limiter=RateLimiter(s.rate_limit), gemini_pool=GeminiKeyPool(s.gemini_api_keys, s.gemini_model))
