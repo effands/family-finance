@@ -1,0 +1,12 @@
+[Unit]
+Description=Money Bot Keluarga
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/money-bot
+ExecStart=/opt/money-bot/.venv/bin/python -m src.main
+Restart=always
+EnvironmentFile=/opt/money-bot/.env
+
+[Install]
+WantedBy=multi-user.target

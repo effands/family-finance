@@ -1,0 +1,1 @@
+"""Family Finance Bot package."""
