@@ -132,6 +132,22 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 14px;
+  text-decoration: none;
+  color: inherit;
+}
+
+a.brand-lockup {
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+a.brand-lockup:hover .brand-mark {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.35);
+}
+
+a.brand-lockup:hover .brand-title {
+  color: var(--brand-dark);
 }
 
 .brand-mark {

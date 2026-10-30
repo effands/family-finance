@@ -512,14 +512,14 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
 
 <main class="page-shell">
   <header class="topbar">
-    <div class="brand-lockup">
+    <a class="brand-lockup" href="/keuangan/dashboard" title="Kembali ke Beranda (Home)">
       <div class="brand-mark">FF</div>
       <div class="brand-info">
         <span class="brand-badge"><span class="status-dot"></span>Panel Pengaturan</span>
         <h1 class="brand-title">Pengaturan Sistem</h1>
         <span class="brand-desc">Konfigurasi Kategori, Layanan AI Gemini, Keamanan & Parameter Sistem</span>
       </div>
-    </div>
+    </a>
     <div class="actions">
       <nav class="header-nav-menu">
         <a class="header-nav-link" href="/keuangan/dashboard">
@@ -1318,14 +1318,14 @@ def _dashboard_response(environ, start_response):
     if path.endswith(("/excel", "/fullscreen")):
         body = f"""<main class="page-shell">
   <header class="topbar">
-    <div class="brand-lockup">
+    <a class="brand-lockup" href="/keuangan/dashboard" title="Kembali ke Beranda (Home)">
       <div class="brand-mark">FF</div>
       <div class="brand-info">
         <span class="brand-badge"><span class="status-dot"></span>Buku Besar Lengkap</span>
         <h1 class="brand-title">Daftar Audit Transaksi Keuangan</h1>
         <span class="brand-desc">Total {len(rows)} mutasi catatan transaksi terverifikasi</span>
       </div>
-    </div>
+    </a>
     <div class="actions">
       <nav class="header-nav-menu">
         <a class="header-nav-link active" href="/keuangan/dashboard">{_svg_icon("layout-dashboard")} Dasbor</a>
@@ -1548,14 +1548,14 @@ def _dashboard_response(environ, start_response):
 <main class="page-shell">
   <!-- Top Navigation Bar -->
   <header class="topbar">
-    <div class="brand-lockup">
+    <a class="brand-lockup" href="/keuangan/dashboard" title="Kembali ke Beranda (Home)">
       <div class="brand-mark">FF</div>
       <div class="brand-info">
         <span class="brand-badge"><span class="status-dot"></span>Sistem Manajemen Aktif</span>
         <h1 class="brand-title">Finance Family</h1>
         <span class="brand-desc">Sistem Manajemen & Pembukuan Finansial Keluarga Terpadu</span>
       </div>
-    </div>
+    </a>
     <div class="actions">
       <nav class="header-nav-menu">
         <a class="header-nav-link active" href="/keuangan/dashboard">
