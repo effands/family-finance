@@ -4,6 +4,8 @@ pytest>=8.0,<9.0
 fastapi>=0.110,<1.0
 uvicorn>=0.29,<1.0
 Flask>=3.0,<4.0
-google-genai>=1.0,<2.0
+# 1.39+ has a client-lifecycle regression in some long-lived WSGI workers.
+# 1.38.0 remains compatible with the Gemini Developer API and current model IDs.
+google-genai==1.38.0
 openpyxl>=3.1.0,<4.0
 reportlab>=4.0.0,<6.0
