@@ -1853,6 +1853,45 @@ def _dashboard_response(environ, start_response):
     </div>
   </section>
 
+  <!-- Transaction Data Ledger Panel (Moved directly below summary metrics for quick access) -->
+  <section class="panel ledger-panel">
+    <div class="panel-header">
+      <div class="panel-title-group">
+        <h3>Buku Besar Mutasi Transaksi</h3>
+        <div class="panel-subtitle">Menampilkan {len(rows)} mutasi catatan transaksi terverifikasi</div>
+      </div>
+      <div class="ledger-toolbar">
+        <div class="ledger-search-box">
+          <span class="search-icon">{_svg_icon("search")}</span>
+          <input class="form-control" type="text" id="tableQuickSearch" placeholder="Pencarian cepat di tabel..." onkeyup="filterTableLive()">
+        </div>
+        <a class="btn btn-secondary btn-sm" href="/keuangan/excel?{export_q}">
+          {_svg_icon("table")} Tampilan Penuh
+        </a>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="data-table" id="transactionTable">
+        <thead>
+          <tr>
+            <th style="width: 70px;">ID</th>
+            <th style="width: 120px;">Tanggal</th>
+            <th style="width: 130px;">Jenis</th>
+            <th style="width: 150px;">Kategori</th>
+            <th>Deskripsi Transaksi</th>
+            <th style="width: 160px;">Nominal (IDR)</th>
+            <th style="width: 150px;">Pencatat</th>
+            <th style="width: 60px; text-align: center;">Aksi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {_rows_html(rows, chat_id)}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
   <!-- Interactive Charts Section -->
   <section class="charts-grid">
     <div class="panel">
@@ -1904,45 +1943,6 @@ def _dashboard_response(environ, start_response):
       <div class="breakdown-list">
         {user_html}
       </div>
-    </div>
-  </section>
-
-  <!-- Transaction Data Ledger Panel -->
-  <section class="panel ledger-panel">
-    <div class="panel-header">
-      <div class="panel-title-group">
-        <h3>Buku Besar Mutasi Transaksi</h3>
-        <div class="panel-subtitle">Menampilkan {len(rows)} mutasi catatan transaksi terverifikasi</div>
-      </div>
-      <div class="ledger-toolbar">
-        <div class="ledger-search-box">
-          <span class="search-icon">{_svg_icon("search")}</span>
-          <input class="form-control" type="text" id="tableQuickSearch" placeholder="Pencarian cepat di tabel..." onkeyup="filterTableLive()">
-        </div>
-        <a class="btn btn-secondary btn-sm" href="/keuangan/excel?{export_q}">
-          {_svg_icon("table")} Tampilan Penuh
-        </a>
-      </div>
-    </div>
-
-    <div class="table-responsive">
-      <table class="data-table" id="transactionTable">
-        <thead>
-          <tr>
-            <th style="width: 70px;">ID</th>
-            <th style="width: 120px;">Tanggal</th>
-            <th style="width: 130px;">Jenis</th>
-            <th style="width: 150px;">Kategori</th>
-            <th>Deskripsi Transaksi</th>
-            <th style="width: 160px;">Nominal (IDR)</th>
-            <th style="width: 150px;">Pencatat</th>
-            <th style="width: 60px; text-align: center;">Aksi</th>
-          </tr>
-        </thead>
-        <tbody>
-          {_rows_html(rows, chat_id)}
-        </tbody>
-      </table>
     </div>
   </section>
 
