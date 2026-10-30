@@ -3,6 +3,7 @@
 Finance Family — Dibuat oleh effands ~ ziqva.com team with love family @2026.
 """
 import asyncio
+import logging
 from datetime import date, datetime
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, Update
@@ -351,9 +352,18 @@ async def receipt_photo_handler(update: Update, context: ContextTypes.DEFAULT_TY
     if not s.gemini_api_keys:
         return await update.message.reply_text("🧾 Foto struk diterima. Tambahkan Gemini API Key melalui dasbor web (Menu Pengaturan) untuk analisa otomatis.")
     status_msg = await update.message.reply_text("🔎 *Sedang menganalisa foto struk belanja dengan Gemini AI...*", parse_mode="Markdown")
+    stage = "mengunduh foto dari Telegram"
     try:
-        photo = await update.message.photo[-1].get_file()
-        image = await photo.download_as_bytearray()
+        for attempt in range(3):
+            try:
+                photo = await update.message.photo[-1].get_file(read_timeout=60, connect_timeout=30)
+                image = await photo.download_as_bytearray(read_timeout=120, connect_timeout=30)
+                break
+            except Exception:
+                if attempt == 2:
+                    raise
+                await asyncio.sleep(1)
+        stage = "menganalisis foto melalui Gemini"
         current = load_settings(context.application.bot_data["db"].path)
         pool = context.application.bot_data["gemini_pool"]
         pool.update(current.gemini_api_keys, current.gemini_model)
@@ -383,9 +393,11 @@ async def receipt_photo_handler(update: Update, context: ContextTypes.DEFAULT_TY
                 InlineKeyboardButton("❌ Batalkan", callback_data="receipt:cancel"),
             ],
         ])
-        await status_msg.edit_text(preview, parse_mode="Markdown", reply_markup=keys)
+        stage = "mengirim hasil ke Telegram"
+        await status_msg.edit_text(preview, parse_mode="Markdown", reply_markup=keys, read_timeout=60, connect_timeout=30)
     except Exception as exc:
-        await status_msg.edit_text(f"⚠️ Gagal membaca struk belanja: {exc}\nSilakan ketik manual, contoh: `belanja supermarket 75rb`.")
+        logging.getLogger(__name__).error("Receipt failed at %s (%s)", stage, type(exc).__name__)
+        await status_msg.edit_text(f"⚠️ Gagal saat {stage}: {type(exc).__name__}. Silakan coba lagi.", read_timeout=60)
 
 
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
