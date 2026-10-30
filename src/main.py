@@ -20,6 +20,7 @@ from .config import load_settings
 from .database import Database
 from .formatting import format_rupiah, render_confirmation
 from .models import Transaction
+from .parser import ParseError, parse_message
 from .rate_limit import RateLimiter
 from .receipt_ai import GeminiKeyPool, extract_receipt
 from .reports import build_expense_summary, build_income_summary, build_report
