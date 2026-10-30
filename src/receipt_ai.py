@@ -53,23 +53,29 @@ def extract_receipt(image_bytes: bytes, api_keys: tuple[str,...], model: str, po
     # Telegram biasanya mengirim JPEG, tetapi tetap deteksi format agar PNG/WEBP
     # dari pengguna tidak dikirim dengan MIME type yang salah.
     mime_type = "image/png" if image_bytes.startswith(b"\x89PNG") else "image/webp" if image_bytes.startswith(b"RIFF") else "image/jpeg"
+    models = list(dict.fromkeys([model, "gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"]))
     for key in pool.ordered():
-        for attempt in range(2):
-            try:
-                client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_MS))
-                response=client.models.generate_content(
-                    model=model,
-                    contents=[types.Part.from_bytes(data=image_bytes, mime_type=mime_type), PROMPT],
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        temperature=0,
-                    ),
-                )
-                if hasattr(client, "close"):
-                    client.close()
-                return _clean_json(response.text or "")
-            except Exception as exc:
-                last=exc
-                if attempt == 0:
-                    time.sleep(1)
+        for candidate in models:
+            for attempt in range(2):
+                client = None
+                try:
+                    client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_MS))
+                    response=client.models.generate_content(
+                        model=candidate,
+                        contents=[types.Part.from_bytes(data=image_bytes, mime_type=mime_type), PROMPT],
+                        config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0),
+                    )
+                    return _clean_json(response.text or "")
+                except Exception as exc:
+                    last=exc
+                    detail = str(exc).lower()
+                    # 503/429 biasanya sementara atau model sedang padat;
+                    # coba ulang sebentar lalu pindah ke model cadangan.
+                    if attempt == 0 and ("503" in detail or "unavailable" in detail or "429" in detail or "resource_exhausted" in detail):
+                        time.sleep(1)
+                        continue
+                    break
+                finally:
+                    if client is not None and hasattr(client, "close"):
+                        client.close()
     raise RuntimeError(f"Semua API key Gemini gagal: {last}")
