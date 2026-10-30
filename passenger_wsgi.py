@@ -8,7 +8,9 @@ import html
 import io
 import json
 import os
+import subprocess
 import sys
+import time
 from datetime import date, datetime, timedelta
 from http.cookies import SimpleCookie
 from urllib.parse import parse_qs, quote_plus, unquote_plus, urlencode
@@ -89,6 +91,7 @@ def _svg_icon(name: str) -> str:
         "edit": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>',
         "key": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>',
         "file-pdf": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M10 12h1a1.5 1.5 0 0 1 1.5 1.5v0a1.5 1.5 0 0 1-1.5 1.5H10v-3z"/><path d="M15 12h2a1.5 1.5 0 0 1 1.5 1.5v0a1.5 1.5 0 0 1-1.5 1.5h-1"/><path d="M6 12v3"/></svg>',
+        "git-pull": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/></svg>',
     }
     return icons.get(name, "")
 
@@ -465,6 +468,18 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
     tab_sec_active = "active" if active_tab == "security" else ""
     tab_sys_active = "active" if active_tab == "system" else ""
 
+    # Git & Deployment Information
+    git_branch = "main"
+    git_commit = "-"
+    git_remote = "-"
+    try:
+        git_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], stderr=subprocess.STDOUT, text=True, timeout=5).strip()
+        git_commit = subprocess.check_output(["git", "log", "-1", "--format=%h - %s (%cd)", "--date=short"], stderr=subprocess.STDOUT, text=True, timeout=5).strip()
+        git_remote = subprocess.check_output(["git", "config", "--get", "remote.origin.url"], stderr=subprocess.STDOUT, text=True, timeout=5).strip()
+    except Exception:
+        pass
+    last_git_update = db.get_setting("last_git_update", "") or "Belum pernah dilakukan pembaruan dari dasbor web."
+
     cat_rows = []
     for c in categories:
         tx_count = db.count_category_transactions(c.name)
@@ -529,9 +544,6 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
           {_svg_icon("settings")} Pengaturan
         </a>
       </nav>
-      <a class="btn btn-ghost" href="/keuangan/dashboard" title="Kembali ke Dasbor">
-        Kembali ke Dasbor
-      </a>
       <a class="btn btn-ghost" href="/keuangan/logout" title="Keluar dari sesi ini" onclick="return confirm('Keluar dari sesi dasbor keuangan?')">
         {_svg_icon("logout")}
       </a>
@@ -681,6 +693,47 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
 
   <!-- TAB 4: INFO SISTEM & TELEGRAM -->
   <div id="tab-content-system" style="display: {'block' if active_tab == 'system' else 'none'};">
+    <section class="settings-section-card" style="margin-bottom: 24px;">
+      <div class="settings-section-header">
+        <div>
+          <h2 class="settings-section-title">Pembaruan Sistem & Sinkronisasi Git</h2>
+          <p class="settings-section-desc">
+            Tarik pembaruan kode sumber langsung dari repositori GitHub ke VPS / server hosting tanpa harus masuk ke terminal SSH atau cPanel admin.
+          </p>
+        </div>
+        <form method="post" action="/keuangan/settings/system/update" onsubmit="return confirmSystemUpdate(this);">
+          <button class="btn btn-primary" type="submit" id="btn-git-update">
+            {_svg_icon("refresh")} Perbarui dari GitHub (Git Pull)
+          </button>
+        </form>
+      </div>
+
+      <table class="info-table">
+        <tbody>
+          <tr>
+            <th>Status Git & Branch</th>
+            <td><span class="keyword-badge" style="background:#e0f2fe; color:#0369a1; font-weight:700;">Branch: {html.escape(git_branch)}</span></td>
+          </tr>
+          <tr>
+            <th>Commit Aktif Saat Ini</th>
+            <td><code>{html.escape(git_commit)}</code></td>
+          </tr>
+          <tr>
+            <th>Repositori GitHub (Remote)</th>
+            <td><a href="{html.escape(git_remote)}" target="_blank" rel="noopener" style="color:var(--brand-primary); font-weight:600;">{html.escape(git_remote)}</a></td>
+          </tr>
+          <tr>
+            <th>Mekanisme Muat Ulang Hosting</th>
+            <td>Passenger WSGI Auto-Reload (<code>tmp/restart.txt</code>) & Re-kompilasi Otomatis</td>
+          </tr>
+          <tr>
+            <th>Riwayat Pembaruan Terakhir</th>
+            <td><code>{html.escape(last_git_update)}</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
     <section class="settings-section-card">
       <div class="settings-section-header">
         <div>
@@ -863,6 +916,17 @@ function toggleApiKeyReveal(inputId, btn) {{
     btn.innerText = 'Tampilkan';
   }}
 }}
+function confirmSystemUpdate(form) {{
+  if (confirm('Tarik pembaruan kode terbaru dari repositori GitHub (git pull) dan muat ulang aplikasi server sekarang?')) {{
+    const btn = document.getElementById('btn-git-update');
+    if (btn) {{
+      btn.disabled = true;
+      btn.innerHTML = 'Memproses Git Pull & Reload...';
+    }}
+    return true;
+  }}
+  return false;
+}}
 </script>"""
 
     return body
@@ -1025,6 +1089,54 @@ def _dashboard_response(environ, start_response):
                 ("Set-Cookie", f"ff_session={new_cookie}; Path=/; HttpOnly;{sec_flag} SameSite=Lax"),
             ],
         )
+        return [b""]
+
+    # SETTINGS: System Update via Git Pull (VPS / Server Auto-Update)
+    if path.endswith("/settings/system/update") and environ.get("REQUEST_METHOD") == "POST":
+        output_lines = []
+        is_success = False
+        try:
+            pull_res = subprocess.run(["git", "pull", "origin", "main"], capture_output=True, text=True, timeout=30)
+            out = (pull_res.stdout or "").strip() or (pull_res.stderr or "").strip()
+            output_lines.append(out)
+            if pull_res.returncode == 0:
+                is_success = True
+            else:
+                fallback_res = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=30)
+                fb_out = (fallback_res.stdout or "").strip() or (fallback_res.stderr or "").strip()
+                if fallback_res.returncode == 0:
+                    is_success = True
+                    output_lines.append(fb_out)
+                else:
+                    output_lines.append(f"Exit code: {pull_res.returncode}")
+
+            # Touch tmp/restart.txt to reload Passenger WSGI on VPS/hosting
+            try:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                tmp_dir = os.path.join(base_dir, "tmp")
+                os.makedirs(tmp_dir, exist_ok=True)
+                with open(os.path.join(tmp_dir, "restart.txt"), "w") as rf:
+                    rf.write(str(time.time()))
+            except Exception:
+                pass
+
+            # Recompile python bytecode
+            try:
+                import compileall
+                compileall.compile_dir(os.path.dirname(os.path.abspath(__file__)), force=False, quiet=1)
+            except Exception:
+                pass
+
+        except Exception as exc:
+            output_lines.append(f"Error: {exc}")
+
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_entry = f"{now_str} — {' '.join(output_lines)}"
+        db.set_setting("last_git_update", log_entry)
+
+        toast_val = "git_success" if is_success else "git_error"
+        msg = quote_plus(" ".join(output_lines)[:160])
+        start_response("303 See Other", [("Location", f"/keuangan/settings?tab=system&toast={toast_val}&detail={msg}")])
         return [b""]
 
     # CSV Template Download
@@ -1231,6 +1343,25 @@ def _dashboard_response(environ, start_response):
           <div style="flex: 1;">
             <div class="toast-title">Konfirmasi Kata Sandi Tidak Sesuai</div>
             <div class="toast-msg">Kata sandi baru dan konfirmasi harus cocok, serta minimal 6 karakter.</div>
+          </div>
+          <button class="toast-close" onclick="dismissToast('main-toast')">&times;</button>
+        </div>"""
+    elif toast_type == "git_success":
+        detail = unquote_plus(query.get("detail", [""])[0])
+        toast_html = f"""<div class="toast toast-success" id="main-toast">
+          <div style="color: var(--income-main);">{_svg_icon("check")}</div>
+          <div style="flex: 1;">
+            <div class="toast-title">Pembaruan Kode Sumber Berhasil</div>
+            <div class="toast-msg">{html.escape(detail or 'Sistem telah ditarik dari GitHub dan server dimuat ulang.')}</div>
+          </div>
+          <button class="toast-close" onclick="dismissToast('main-toast')">&times;</button>
+        </div>"""
+    elif toast_type == "git_error":
+        detail = unquote_plus(query.get("detail", [""])[0])
+        toast_html = f"""<div class="toast toast-error" id="main-toast">
+          <div style="flex: 1;">
+            <div class="toast-title">Pembaruan Sistem Gagal</div>
+            <div class="toast-msg">{html.escape(detail or 'Terjadi kendala saat menjalankan perintah git pull.')}</div>
           </div>
           <button class="toast-close" onclick="dismissToast('main-toast')">&times;</button>
         </div>"""
@@ -1568,6 +1699,21 @@ def _dashboard_response(environ, start_response):
       <button class="btn btn-primary" type="button" onclick="openAddModal()">
         {_svg_icon("plus")} Catat Transaksi
       </button>
+      <a class="btn btn-ghost" href="/keuangan/logout" title="Keluar dari sesi ini" onclick="return confirm('Keluar dari sesi dasbor keuangan?')">
+        {_svg_icon("logout")}
+      </a>
+    </div>
+  </header>
+
+  <!-- Period Tabs & Action Toolbar -->
+  <div class="period-nav-wrapper">
+    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+      <nav class="period-tabs">
+        {period_tabs_html}
+      </nav>
+      {custom_date_form}
+    </div>
+    <div class="period-toolbar-actions">
       <button class="btn btn-secondary" type="button" onclick="openImportModal()">
         {_svg_icon("upload")} Impor Berkas
       </button>
@@ -1577,18 +1723,7 @@ def _dashboard_response(environ, start_response):
       <a class="btn btn-secondary" href="/keuangan/export.xlsx?{export_q}">
         {_svg_icon("download")} Ekspor Excel
       </a>
-      <a class="btn btn-ghost" href="/keuangan/logout" title="Keluar dari sesi ini" onclick="return confirm('Keluar dari sesi dasbor keuangan?')">
-        {_svg_icon("logout")}
-      </a>
     </div>
-  </header>
-
-  <!-- Period Tabs & Custom Date Selector -->
-  <div class="period-nav-wrapper">
-    <nav class="period-tabs">
-      {period_tabs_html}
-    </nav>
-    {custom_date_form}
   </div>
 
   <!-- Advanced Filters Panel -->
@@ -2070,6 +2205,7 @@ def application(environ, start_response):
         "/settings/gemini/save",
         "/settings/gemini/test",
         "/settings/password/save",
+        "/settings/system/update",
         "/excel",
         "/fullscreen",
         "/export.xlsx",
