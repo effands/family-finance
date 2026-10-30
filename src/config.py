@@ -12,7 +12,7 @@ class Settings:
     log_path: str = "money-bot.log"
     rate_limit: int = 30
     gemini_api_keys: tuple[str, ...] = ()
-    gemini_model: str = "gemini-2.0-flash"
+    gemini_model: str = "gemini-3.8-flash"
 
 
 def load_settings(custom_db_path: str | None = None) -> Settings:
@@ -41,7 +41,7 @@ def load_settings(custom_db_path: str | None = None) -> Settings:
 
     raw_keys = db_gemini_keys or os.getenv("GEMINI_API_KEYS", os.getenv("GEMINI_API_KEY", ""))
     keys = tuple(x.strip() for x in raw_keys.split(",") if x.strip())
-    model = db_gemini_model or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    model = db_gemini_model or os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
     return Settings(
         token,

@@ -88,7 +88,7 @@ Fitur & Antarmuka Dasbor Eksekutif:
 - **Impor Transaksi CSV & Unduh Templat:** Unggah berkas CSV massal aman tanpa menimpa catatan sebelumnya, disertai tombol unduh contoh templat CSV resmi (`/keuangan/template.csv`).
 - **Modul Pengaturan Sistem (`/keuangan/settings`):**
   - **CRUD Kategori Transaksi:** Tambah kategori baru dengan emoji dan kata kunci deteksi otomatis, sunting kategori, dan hapus kategori (transaksi terkait dialihkan otomatis ke kategori *Lain-lain*).
-  - **Integrasi Google Gemini Vision AI:** Input Kunci API (*multiple keys* untuk *failover* otomatis), pemilihan model (*gemini-2.0-flash*), serta fitur pengujian koneksi (*live test*).
+  - **Integrasi Google Gemini Vision AI:** Input multi-key dengan round-robin + failover otomatis, pemilihan Gemini 3.8/3.6 Flash, serta pengujian koneksi semua key.
   - **Manajemen Kata Sandi:** Ubah kata sandi akses dasbor web dengan validasi kata sandi lama dan hashing SHA-256.
   - **Info Parameter Sistem:** Tinjau izin chat Telegram, zona waktu, lokasi basis data, dan batas laju pesan (*rate limit*).
 

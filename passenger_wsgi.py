@@ -137,19 +137,14 @@ def _update_env_file(key: str, value: str, env_path: str = ".env"):
 
 
 def _test_gemini_connection(api_key: str, model: str) -> tuple[bool, str]:
-    clean_key = (api_key.split(",")[0] or "").strip()
-    if not clean_key:
+    keys=tuple(x.strip() for x in api_key.split(",") if x.strip())
+    if not keys:
         return False, "Kunci API Gemini belum diisi."
     try:
-        from google import genai
-        client = genai.Client(api_key=clean_key)
-        response = client.models.generate_content(
-            model=model or "gemini-2.0-flash",
-            contents="Tes koneksi. Jawab 'OK'."
-        )
-        if response and response.text:
-            return True, "Koneksi berhasil dan model AI merespons dengan normal."
-        return True, "Koneksi berhasil terhubung ke server Google Gemini."
+        from src.receipt_ai import GeminiKeyPool
+        pool=GeminiKeyPool(keys, model or "gemini-3.8-flash")
+        ok,msg=pool.test()
+        return (True, f"Koneksi berhasil. {len(keys)} key aktif, failover siap.") if ok else (False,msg)
     except Exception as exc:
         return False, str(exc)
 
@@ -404,7 +399,7 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
     
     # Active Gemini Configurations
     gemini_keys_val = db.get_setting("gemini_api_keys", "") or os.getenv("GEMINI_API_KEYS", os.getenv("GEMINI_API_KEY", ""))
-    gemini_model_val = db.get_setting("gemini_model", "") or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    gemini_model_val = db.get_setting("gemini_model", "") or os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
     gemini_active = bool(gemini_keys_val.strip())
     
     # Tab active classes
@@ -569,12 +564,14 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
         <div class="form-group">
           <label for="gemini-model">Pilihan Model Gemini</label>
           <select class="form-control" id="gemini-model" name="gemini_model">
-            <option value="gemini-2.0-flash" {'selected' if gemini_model_val == 'gemini-2.0-flash' else ''}>gemini-2.0-flash (Direkomendasikan: Sangat Cepat & Akurat)</option>
+            <option value="gemini-3.8-flash" {'selected' if gemini_model_val == 'gemini-3.8-flash' else ''}>gemini-3.8-flash (Direkomendasikan)</option>
+            <option value="gemini-3.6-flash" {'selected' if gemini_model_val == 'gemini-3.6-flash' else ''}>gemini-3.6-flash (Stabil & multimodal)</option>
+            <option value="gemini-3.7-flash" {'selected' if gemini_model_val == 'gemini-3.7-flash' else ''}>gemini-3.7-flash</option>
             <option value="gemini-1.5-flash" {'selected' if gemini_model_val == 'gemini-1.5-flash' else ''}>gemini-1.5-flash (Ringan & Cepat)</option>
             <option value="gemini-1.5-pro" {'selected' if gemini_model_val == 'gemini-1.5-pro' else ''}>gemini-1.5-pro (Analisis Mendalam)</option>
           </select>
           <div class="setting-help-text">
-            Model *gemini-2.0-flash* dirancang khusus untuk inferensi multimodal berkecepatan tinggi dengan kuota gratis yang memadai.
+            Gemini 3.8 Flash direkomendasikan untuk pembacaan struk multimodal; Gemini 3.6 Flash tersedia sebagai alternatif.
           </div>
         </div>
 
@@ -923,7 +920,7 @@ def _dashboard_response(environ, start_response):
         length = int(environ.get("CONTENT_LENGTH") or 0)
         form = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "replace"))
         keys = form.get("gemini_api_keys", [""])[0].strip()
-        model = form.get("gemini_model", ["gemini-2.0-flash"])[0].strip()
+        model = form.get("gemini_model", ["gemini-3.8-flash"])[0].strip()
         db.set_setting("gemini_api_keys", keys)
         db.set_setting("gemini_model", model)
         os.environ["GEMINI_API_KEYS"] = keys
@@ -938,7 +935,7 @@ def _dashboard_response(environ, start_response):
         length = int(environ.get("CONTENT_LENGTH") or 0)
         form = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "replace"))
         keys = form.get("gemini_api_keys", [""])[0].strip()
-        model = form.get("gemini_model", ["gemini-2.0-flash"])[0].strip()
+        model = form.get("gemini_model", ["gemini-3.8-flash"])[0].strip()
         if not keys:
             start_response("303 See Other", [("Location", "/keuangan/settings?tab=gemini&toast=gemini_err_empty")])
             return [b""]

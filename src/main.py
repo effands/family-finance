@@ -10,7 +10,7 @@ from .formatting import render_confirmation
 from .models import Transaction
 from .reports import build_report
 from .rate_limit import RateLimiter
-from .receipt_ai import extract_receipt
+from .receipt_ai import extract_receipt, GeminiKeyPool
 
 MENU=ReplyKeyboardMarkup([["➕ Catat transaksi", "🧾 Upload struk"], ["📊 Laporan bulan", "📅 Laporan minggu"], ["💰 Rekap saldo", "↩️ Undo terakhir"], ["🏷️ Kategori", "❓ Bantuan"]], resize_keyboard=True)
 HELP="""👋 Halo! Aku pencatat keuangan keluarga.
@@ -87,7 +87,9 @@ async def receipt_photo(update,context):
     status=await update.message.reply_text("🔎 Aku sedang membaca struk…")
     try:
         photo=await update.message.photo[-1].get_file(); image=await photo.download_as_bytearray()
-        data=await asyncio.to_thread(extract_receipt,bytes(image),s.gemini_api_keys,s.gemini_model)
+        current=load_settings(context.application.bot_data["db"].path)
+        pool=context.application.bot_data["gemini_pool"]; pool.update(current.gemini_api_keys,current.gemini_model)
+        data=await asyncio.to_thread(extract_receipt,bytes(image),current.gemini_api_keys,current.gemini_model,pool)
         context.user_data["pending_receipt"]={**data,"user_id":str(update.effective_user.id),"username":update.effective_user.username or update.effective_user.first_name,"chat_id":str(update.effective_chat.id)}
         preview=f"🧾 *Preview struk*\n💸 Rp {data['amount']:,}\n📝 {data['description']}\n🏷️ {data['category']}\n📅 {data['date']}\n\nSimpan catatan ini?"
         keys=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Simpan",callback_data="receipt:save"),InlineKeyboardButton("✏️ Koreksi",callback_data="receipt:edit")],[InlineKeyboardButton("❌ Batal",callback_data="receipt:cancel")]])
@@ -105,5 +107,5 @@ async def receipt_callback(update,context):
     saved=context.application.bot_data["db"].add_transaction(x); context.user_data.pop("pending_receipt",None)
     await query.edit_message_text(render_confirmation(saved,pending["username"]))
 def build_app():
-    s=load_settings(); db=Database(s.database_path); db.initialize(); app=Application.builder().token(s.bot_token).build(); app.bot_data.update(settings=s,db=db,limiter=RateLimiter(s.rate_limit)); app.add_handler(CommandHandler("start",start)); app.add_handler(CommandHandler(["laporan","hari","minggu","bulan","all","rekap"],report)); app.add_handler(CommandHandler("undo",undo)); app.add_handler(CommandHandler("hapus",delete_cmd)); app.add_handler(CommandHandler("edit",edit_cmd)); app.add_handler(CommandHandler("kategori",categories)); app.add_handler(CommandHandler("tambahkategori",add_category)); app.add_handler(CommandHandler("hapuskategori",remove_category)); app.add_handler(CallbackQueryHandler(receipt_callback,pattern=r"^receipt:")); app.add_handler(MessageHandler(filters.PHOTO,receipt_photo)); app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,menu_text)); app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,message)); return app
+    s=load_settings(); db=Database(s.database_path); db.initialize(); app=Application.builder().token(s.bot_token).build(); app.bot_data.update(settings=s,db=db,limiter=RateLimiter(s.rate_limit),gemini_pool=GeminiKeyPool(s.gemini_api_keys,s.gemini_model)); app.add_handler(CommandHandler("start",start)); app.add_handler(CommandHandler(["laporan","hari","minggu","bulan","all","rekap"],report)); app.add_handler(CommandHandler("undo",undo)); app.add_handler(CommandHandler("hapus",delete_cmd)); app.add_handler(CommandHandler("edit",edit_cmd)); app.add_handler(CommandHandler("kategori",categories)); app.add_handler(CommandHandler("tambahkategori",add_category)); app.add_handler(CommandHandler("hapuskategori",remove_category)); app.add_handler(CallbackQueryHandler(receipt_callback,pattern=r"^receipt:")); app.add_handler(MessageHandler(filters.PHOTO,receipt_photo)); app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,menu_text)); app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,message)); return app
 if __name__=="__main__": build_app().run_polling()
