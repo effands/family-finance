@@ -429,6 +429,7 @@ def _rows_html(rows, active_chat_id=""):
         user_initials = _monogram(user_name)
         desc_escaped = html.escape(x.description)
         cat_escaped = html.escape(x.category)
+        desc_js = desc_escaped.replace("'", "\\'")
 
         output.append(f"""<tr class="tx-row" data-id="{x.id}">
           <td class="tabular-nums" style="color: var(--ink-muted); font-size: 12px; font-weight: 600;">#{x.id}</td>
@@ -444,7 +445,7 @@ def _rows_html(rows, active_chat_id=""):
             </div>
           </td>
           <td class="action-cell">
-            <button class="btn btn-ghost btn-sm" type="button" title="Hapus transaksi ini" onclick="confirmDelete({x.id}, '{desc_escaped.replace("'", "\\'")}', '{format_rupiah(x.amount)}')">
+            <button class="btn btn-ghost btn-sm" type="button" title="Hapus transaksi ini" onclick="confirmDelete({x.id}, '{desc_js}', '{format_rupiah(x.amount)}')">
               {_svg_icon("trash")}
             </button>
           </td>
