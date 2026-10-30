@@ -1,6 +1,7 @@
 """Gemini Vision receipt extraction. Optional: the bot works without it."""
 import json
 import threading
+import time
 from datetime import date
 from google import genai
 from google.genai import types
@@ -47,11 +48,24 @@ def extract_receipt(image_bytes: bytes, api_keys: tuple[str,...], model: str, po
     pool.update(api_keys, model)
     if not pool.keys: raise RuntimeError("GEMINI_API_KEYS belum diisi")
     last=None
+    # Telegram biasanya mengirim JPEG, tetapi tetap deteksi format agar PNG/WEBP
+    # dari pengguna tidak dikirim dengan MIME type yang salah.
+    mime_type = "image/png" if image_bytes.startswith(b"\x89PNG") else "image/webp" if image_bytes.startswith(b"RIFF") else "image/jpeg"
     for key in pool.ordered():
-        try:
-            with genai.Client(api_key=key, http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_MS)) as client:
-                response=client.models.generate_content(model=model, contents=[types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"), PROMPT])
-            return _clean_json(response.text or "")
-        except Exception as exc:
-            last=exc
+        for attempt in range(2):
+            try:
+                with genai.Client(api_key=key, http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_MS)) as client:
+                    response=client.models.generate_content(
+                        model=model,
+                        contents=[types.Part.from_bytes(data=image_bytes, mime_type=mime_type), PROMPT],
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            temperature=0,
+                        ),
+                    )
+                return _clean_json(response.text or "")
+            except Exception as exc:
+                last=exc
+                if attempt == 0:
+                    time.sleep(1)
     raise RuntimeError(f"Semua API key Gemini gagal: {last}")
