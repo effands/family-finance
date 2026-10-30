@@ -40,6 +40,11 @@ class Database:
         with self._conn() as c: return self._row(c.execute("SELECT * FROM transactions WHERE user_id=? AND chat_id=? AND created_at>=? ORDER BY created_at DESC LIMIT 1",(user_id,chat_id,(now-timedelta(minutes=5)).isoformat())).fetchone())
     def delete_transaction(self,id,user_id,chat_id):
         with self._conn() as c: return c.execute("DELETE FROM transactions WHERE id=? AND user_id=? AND chat_id=?",(id,user_id,chat_id)).rowcount == 1
+    def delete_transaction_web(self, id: int, chat_id: str | None = None) -> bool:
+        with self._conn() as c:
+            if chat_id:
+                return c.execute("DELETE FROM transactions WHERE id=? AND chat_id=?", (id, chat_id)).rowcount == 1
+            return c.execute("DELETE FROM transactions WHERE id=?", (id,)).rowcount == 1
     def update_transaction(self,id,user_id,chat_id,**changes):
         allowed={k:v for k,v in changes.items() if k in {"amount","description","category","type"}}
         if not allowed:return False

@@ -70,18 +70,22 @@ Pilihan deployment:
 
 Jangan membagikan `.env`. Isi `ALLOWED_CHAT_IDS` hanya dengan grup yang diizinkan. Bot menerapkan rate limit 30 pesan/menit/user. Untuk produksi multi-keluarga, gunakan satu database/schema terpisah per tenant dan tambahkan backup otomatis.
 
-## Dashboard web keluarga
+## Dasbor Web Finansial Keluarga
 
-Dashboard tersedia di `https://domain-anda/keuangan/dashboard`. Isikan `WEB_PASSWORD` di `.env`, lalu masuk memakai password tersebut. Judul web sudah menggunakan **Finance Family — Catatan Keuangan Keluarga**.
+Dasbor tersedia di `https://domain-anda/keuangan/dashboard` (atau secara lokal di `http://127.0.0.1:8000/keuangan/dashboard`). Isikan `WEB_PASSWORD` di file `.env`, lalu lakukan autentikasi menggunakan kata sandi tersebut.
 
-Di dashboard tersedia:
+Fitur & Antarmuka Dasbor Eksekutif:
 
-- Pilihan periode minggu ini, bulan ini, semua transaksi, atau tanggal custom.
-- Filter tipe transaksi, kategori, pencarian deskripsi/user, serta sortir tanggal/nominal/deskripsi/kategori.
-- Kartu total pemasukan, pengeluaran, dan saldo bersih.
-- Ringkasan pengeluaran per kategori dan kontribusi per user.
-- Download CSV sesuai filter aktif, cetak atau simpan sebagai PDF dari browser.
-- Import CSV tanpa menghapus transaksi lama. Header yang diterima: `tanggal,tipe,nominal,deskripsi,kategori,user`.
+- **Navigasi Periode Fleksibel:** Pilihan cepat Pekan Ini, Bulan Ini, Tahun Ini, Semua Periode, dan pemilih Rentang Tanggal Kustom.
+- **Kartu Indikator Finansial (KPI):** Total Pemasukan, Total Pengeluaran, Arus Kas Bersih (*Net Cash Flow*) dengan indikator surplus/defisit dinamis, serta Rasio Retensi Tabungan (*Savings Rate*).
+- **Visualisasi Analitik Interaktif:** Grafik batang perbandingan arus kas (*Cash Flow Comparison*) dan diagram donat proporsi pos pengeluaran (*Category Breakdown*) bertenaga Chart.js.
+- **Pencatatan Transaksi Manual:** Tambah mutasi kas masuk/keluar langsung melalui modal dialog web tanpa harus melalui Telegram.
+- **Manajemen Mutasi & Audit:** Penghapusan catatan transaksi dengan dialog konfirmasi aman.
+- **Pencarian Real-Time (Live Filter):** Penyaringan instan data pada tabel buku besar tanpa *page reload*.
+- **Filter Lanjutan:** Filter berdasarkan Jenis Transaksi, Kategori, Urutkan (Tanggal, Nominal, Deskripsi, Kategori), dan Tata Urutan (*Ascending/Descending*).
+- **Distribusi Kategori & Kontribusi Anggota:** Visualisasi *progress bar* proporsi belanja per pos kategori dan rekapitulasi anggota keluarga.
+- **Ekspor & Cetak Laporan:** Ekspor data mutasi ke berkas CSV dengan enkoding UTF-8-BOM yang aman untuk Excel, dan tata letak cetak ramah PDF (*Print-ready*).
+- **Impor Transaksi CSV & Unduh Templat:** Unggah berkas CSV massal aman tanpa menimpa catatan sebelumnya, disertai tombol unduh contoh templat CSV resmi (`/keuangan/template.csv`).
 
 Contoh CSV import:
 
