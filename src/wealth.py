@@ -44,6 +44,7 @@ class WealthLedger:
 
     def archive_account(self, chat_id, account_id, actor_user_id):
         with self.db._conn() as conn:
+            self._begin(conn)
             account = self._account(conn, chat_id, account_id, active=False)
             if not account["is_active"]:
                 return
@@ -51,6 +52,7 @@ class WealthLedger:
 
     def set_default_account(self, chat_id, operation_kind, account_id):
         with self.db._conn() as conn:
+            self._begin(conn)
             self._account(conn, chat_id, account_id)
             if operation_kind not in {"income", "expense", "transfer", "cash_withdrawal"}:
                 raise WealthError("Jenis default akun tidak valid")
@@ -65,12 +67,18 @@ class WealthLedger:
         if not isinstance(actual_balance, int) or actual_balance < 0:
             raise WealthError("Saldo aktual harus nol atau lebih")
         with self.db._conn() as conn:
+            self._begin(conn)
             self._account(conn, chat_id, account_id)
-            current = self._balance(conn, chat_id, account_id)
+            key = "reconcile:%s:%s" % (account_id, effective_date.isoformat())
+            existing = conn.execute("SELECT id FROM ledger_operations WHERE chat_id=? AND idempotency_key=?", (chat_id, key)).fetchone()
+            if existing:
+                return self._get_operation(conn, existing["id"])
+            current = self._balance(conn, chat_id, account_id, effective_date)
             difference = actual_balance - current
             if difference == 0:
-                return self._operation(conn, chat_id, "adjustment", "Rekonsiliasi: " + reason, "", effective_date, actor_user_id, actor_username, "reconcile:%s:%s" % (account_id, effective_date.isoformat())) and self._get_operation(conn, conn.execute("SELECT id FROM ledger_operations WHERE chat_id=? AND idempotency_key=?", (chat_id, "reconcile:%s:%s" % (account_id, effective_date.isoformat()))).fetchone()["id"])
-            op_id = self._operation(conn, chat_id, "adjustment", "Rekonsiliasi: " + reason, "", effective_date, actor_user_id, actor_username, "reconcile:%s:%s" % (account_id, effective_date.isoformat()))
+                op_id = self._operation(conn, chat_id, "adjustment", "Rekonsiliasi: " + reason, "", effective_date, actor_user_id, actor_username, key)
+                return self._get_operation(conn, op_id)
+            op_id = self._operation(conn, chat_id, "adjustment", "Rekonsiliasi: " + reason, "", effective_date, actor_user_id, actor_username, key)
             self._entry(conn, op_id, chat_id, account_id, "credit" if difference > 0 else "debit", abs(difference), "adjustment", reason, "Penyesuaian Saldo", effective_date)
             return self._get_operation(conn, op_id)
 
@@ -80,12 +88,21 @@ class WealthLedger:
             raise WealthError("Akun tidak ditemukan atau tidak aktif")
         return row
 
+    @staticmethod
+    def _begin(conn):
+        conn.execute("BEGIN IMMEDIATE")
+
+    @staticmethod
+    def _check_date(account, tx_date):
+        if tx_date < date.fromisoformat(account["opening_balance_date"]):
+            raise WealthError("Tanggal mutasi tidak boleh sebelum tanggal saldo awal")
+
     def _balance(self, conn, chat_id, account_id, as_of=None):
         account = self._account(conn, chat_id, account_id, active=False)
         q = """SELECT COALESCE(SUM(CASE WHEN e.direction='credit' THEN e.amount ELSE -e.amount END), 0) AS movement
                FROM ledger_entries e JOIN ledger_operations o ON o.id=e.operation_id
-               WHERE e.chat_id=? AND e.account_id=?"""
-        params = [chat_id, account_id]
+               WHERE e.chat_id=? AND e.account_id=? AND e.transaction_date>=?"""
+        params = [chat_id, account_id, account["opening_balance_date"]]
         if as_of:
             q += " AND e.transaction_date<=?"
             params.append(as_of.isoformat())
@@ -112,7 +129,10 @@ class WealthLedger:
     def create_income(self, chat_id, account_id, amount, description, category, transaction_date, actor_user_id, actor_username, idempotency_key=None):
         self._validate_amount(amount)
         with self.db._conn() as conn:
+            self._begin(conn)
             self._account(conn, chat_id, account_id)
+            account = self._account(conn, chat_id, account_id)
+            self._check_date(account, transaction_date)
             op_id = self._operation(conn, chat_id, "income", description, category, transaction_date, actor_user_id, actor_username, idempotency_key)
             if conn.execute("SELECT COUNT(*) AS n FROM ledger_entries WHERE operation_id=?", (op_id,)).fetchone()["n"] == 0:
                 self._entry(conn, op_id, chat_id, account_id, "credit", amount, "income", description, category, transaction_date)
@@ -121,7 +141,13 @@ class WealthLedger:
     def create_expense(self, chat_id, account_id, amount, description, category, transaction_date, actor_user_id, actor_username, idempotency_key=None):
         self._validate_amount(amount)
         with self.db._conn() as conn:
-            self._account(conn, chat_id, account_id)
+            self._begin(conn)
+            account = self._account(conn, chat_id, account_id)
+            self._check_date(account, transaction_date)
+            if idempotency_key:
+                existing = conn.execute("SELECT id FROM ledger_operations WHERE chat_id=? AND idempotency_key=?", (chat_id, idempotency_key)).fetchone()
+                if existing:
+                    return self._get_operation(conn, existing["id"])
             if self._balance(conn, chat_id, account_id) < amount:
                 raise InsufficientFundsError("Saldo akun tidak mencukupi")
             op_id = self._operation(conn, chat_id, "expense", description, category, transaction_date, actor_user_id, actor_username, idempotency_key)
@@ -136,9 +162,20 @@ class WealthLedger:
         if fee_amount < 0:
             raise WealthError("Biaya tidak boleh negatif")
         with self.db._conn() as conn:
-            self._account(conn, chat_id, source_account_id)
-            self._account(conn, chat_id, destination_account_id)
+            self._begin(conn)
+            source = self._account(conn, chat_id, source_account_id)
+            destination = self._account(conn, chat_id, destination_account_id)
+            self._check_date(source, transaction_date)
+            self._check_date(destination, transaction_date)
+            if idempotency_key:
+                existing = conn.execute("SELECT id FROM ledger_operations WHERE chat_id=? AND idempotency_key=?", (chat_id, idempotency_key)).fetchone()
+                if existing:
+                    return self._get_operation(conn, existing["id"])
             total = amount + fee_amount
+            if operation_type not in {"transfer", "cash_withdrawal"}:
+                raise WealthError("Jenis transfer tidak valid")
+            if operation_type == "cash_withdrawal" and destination["account_type"] != "cash":
+                raise WealthError("Tarik tunai harus masuk ke akun Cash")
             if self._balance(conn, chat_id, source_account_id) < total:
                 raise InsufficientFundsError("Saldo akun sumber tidak mencukupi")
             op_id = self._operation(conn, chat_id, operation_type, description, "", transaction_date, actor_user_id, actor_username, idempotency_key)
@@ -151,6 +188,7 @@ class WealthLedger:
 
     def reverse_operation(self, chat_id, operation_id, actor_user_id, reason):
         with self.db._conn() as conn:
+            self._begin(conn)
             original = conn.execute("SELECT * FROM ledger_operations WHERE id=? AND chat_id=?", (operation_id, chat_id)).fetchone()
             if not original:
                 raise WealthError("Operasi tidak ditemukan")
@@ -158,6 +196,9 @@ class WealthLedger:
                 raise WealthError("Operasi sudah dibatalkan")
             op_id = self._operation(conn, chat_id, "reversal", reason, "", date.today(), actor_user_id, actor_user_id, "reversal:" + operation_id)
             entries = conn.execute("SELECT * FROM ledger_entries WHERE operation_id=?", (operation_id,)).fetchall()
+            for entry in entries:
+                if entry["direction"] == "credit" and self._balance(conn, chat_id, entry["account_id"]) < entry["amount"]:
+                    raise InsufficientFundsError("Pembatalan ditolak karena saldo akun tujuan sudah terpakai")
             for entry in entries:
                 self._entry(conn, op_id, chat_id, entry["account_id"], "credit" if entry["direction"] == "debit" else "debit", entry["amount"], "reversal", reason, entry["category"], date.today())
             conn.execute("UPDATE ledger_operations SET reversed_operation_id=? WHERE id=?", (op_id, operation_id))
@@ -169,9 +210,14 @@ class WealthLedger:
         row = conn.execute("SELECT * FROM ledger_operations WHERE id=?", (op_id,)).fetchone()
         return LedgerOperation(row["id"], row["chat_id"], row["operation_type"], row["description"], date.fromisoformat(row["transaction_date"]), row["actor_user_id"], row["actor_username"], row["idempotency_key"], row["reversed_operation_id"])
 
-    def get_account_balances(self, chat_id, as_of=None):
+    def get_account_balances(self, chat_id, as_of=None, include_archived=True):
         with self.db._conn() as conn:
-            rows = conn.execute("SELECT * FROM financial_accounts WHERE chat_id=? AND is_active=1 ORDER BY name", (chat_id,)).fetchall()
+            as_of = as_of or date.today()
+            q = "SELECT * FROM financial_accounts WHERE chat_id=?"
+            if not include_archived:
+                q += " AND is_active=1"
+            q += " ORDER BY name"
+            rows = conn.execute(q, (chat_id,)).fetchall()
             return [AccountBalance(r["id"], r["name"], r["account_type"], self._balance(conn, chat_id, r["id"], as_of)) for r in rows]
 
     def get_wealth_summary(self, chat_id, as_of=None):
@@ -181,6 +227,10 @@ class WealthLedger:
         total = sum(x.balance for x in balances)
         liquid = total - investments
         with self.db._conn() as conn:
-            rows = conn.execute("SELECT operation_type, SUM(e.amount) AS amount FROM ledger_operations o JOIN ledger_entries e ON e.operation_id=o.id WHERE o.chat_id=? AND o.reversed_operation_id IS NULL GROUP BY operation_type", (chat_id,)).fetchall()
-        totals = {r["operation_type"]: r["amount"] or 0 for r in rows}
-        return WealthSummary(total, liquid, investments, cash, totals.get("income", 0), totals.get("expense", 0))
+            rows = conn.execute("""SELECT o.operation_type, e.entry_type, e.direction, SUM(e.amount) AS amount
+                FROM ledger_operations o JOIN ledger_entries e ON e.operation_id=o.id
+                WHERE o.chat_id=? AND o.reversed_operation_id IS NULL AND e.transaction_date<=?
+                GROUP BY o.operation_type, e.entry_type, e.direction""", (chat_id, (as_of or date.today()).isoformat())).fetchall()
+        income = sum(r["amount"] for r in rows if r["operation_type"] == "income" and r["direction"] == "credit")
+        expense = sum(r["amount"] for r in rows if r["entry_type"] in {"expense", "fee"} and r["direction"] == "debit")
+        return WealthSummary(total, liquid, investments, cash, income, expense)

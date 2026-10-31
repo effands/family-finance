@@ -2526,6 +2526,35 @@ def application(environ, start_response):
                 _send_telegram(chat_id, build_expense_summary(db, chat_id, now, "bulan"))
 
             # Recap & Balance Command
+            elif text and text.split()[0].split("@")[0] == "/akun":
+                accounts = db.list_accounts(chat_id)
+                if not accounts:
+                    _send_telegram(chat_id, "🏦 Belum ada akun. Tambahkan melalui `/keuangan/wealth` di dasbor web.")
+                else:
+                    ledger = WealthLedger(db)
+                    balances = {x.account_id: x for x in ledger.get_account_balances(chat_id, include_archived=False)}
+                    lines = ["🏦 *AKUN KEUANGAN AKTIF*", "━━━━━━━━━━━━━━━━━━━━━━"]
+                    for account in accounts:
+                        ident = ("•••• " + account.account_identifier[-4:]) if len(account.account_identifier) > 4 else "—"
+                        lines.append(f"• *{account.name}* (ID `{account.id}`)\n  {ident} · {format_rupiah(balances[account.id].balance)}")
+                    _send_telegram(chat_id, "\n".join(lines))
+
+            # Wealth summary command must be matched before /saldo legacy prefix.
+            elif text and text.split()[0].split("@")[0] == "/saldoaset":
+                summary = WealthLedger(db).get_wealth_summary(chat_id)
+                _send_telegram(chat_id, f"💎 *TOTAL KEKAYAAN*\n━━━━━━━━━━━━━━━━━━━━━━\n• Total aset: *{format_rupiah(summary.total_wealth)}*\n• Aset likuid: *{format_rupiah(summary.liquid_assets)}*\n• Investasi: *{format_rupiah(summary.investments)}*\n• Cash: *{format_rupiah(summary.cash)}*")
+
+            elif text and text.split()[0].split("@")[0] == "/transfer":
+                parts = text.split()
+                try:
+                    if len(parts) < 4:
+                        raise ValueError("Format: /transfer <dari_id> <ke_id> <nominal> <keterangan>")
+                    amount = int(parts[3].replace(".", "").replace(",", "").replace("Rp", ""))
+                    WealthLedger(db).create_transfer(chat_id, int(parts[1]), int(parts[2]), amount, " ".join(parts[4:]) or "Transfer", now.date(), user_id, uname, idempotency_key=f"webhook:{update.get('update_id')}")
+                    _send_telegram(chat_id, f"✅ Transfer {format_rupiah(amount)} berhasil dicatat.")
+                except (ValueError, WealthError, InsufficientFundsError) as exc:
+                    _send_telegram(chat_id, f"❌ Transfer ditolak: {exc}")
+
             elif text.startswith(("/rekap", "/saldo")):
                 _send_telegram(chat_id, build_report(db, "bulan", chat_id, now))
 

@@ -23,6 +23,8 @@ def test_archived_account_stays_in_history_but_cannot_be_used(tmp_path):
     db.initialize()
     account = db.create_account(FinancialAccount(None, "family", "GoPay Lama", "ewallet", "GoPay", "Keluarga", "0812", "IDR", 0, date(2026, 11, 1)))
     ledger = WealthLedger(db)
+    ledger.create_income("family", account.id, 80_000, "Isi saldo", "", date(2026, 11, 1), "u", "Ayah", idempotency_key="seed")
     ledger.archive_account("family", account.id, "u")
     assert db.list_accounts("family") == []
     assert db.list_accounts("family", include_archived=True)[0].is_active is False
+    assert ledger.get_wealth_summary("family").total_wealth == 80_000
