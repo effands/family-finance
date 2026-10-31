@@ -2627,6 +2627,22 @@ def application(environ, start_response):
             elif text and not text.startswith("/"):
                 parsed = parse_message(text, now, settings.timezone)
                 category = categorize(parsed.description, db.list_categories())
+                wealth_ledger = WealthLedger(db)
+                wealth_account = wealth_ledger.get_default_account(chat_id, parsed.type)
+                if wealth_account:
+                    try:
+                        if parsed.type == "income":
+                            op = wealth_ledger.create_income(chat_id, wealth_account.id, parsed.amount, parsed.description, category.name, parsed.transaction_date, user_id, uname, idempotency_key=f"webhook:{update.get('update_id')}")
+                        else:
+                            op = wealth_ledger.create_expense(chat_id, wealth_account.id, parsed.amount, parsed.description, category.name, parsed.transaction_date, user_id, uname, idempotency_key=f"webhook:{update.get('update_id')}")
+                        summary = wealth_ledger.get_wealth_summary(chat_id)
+                        _send_telegram(chat_id, f"✅ *Mutasi tercatat dari {wealth_account.name}*\n{parsed.description}: *{format_rupiah(parsed.amount)}*\nSaldo total tercatat: *{format_rupiah(summary.total_wealth)}*\nRef: `{op.id[:10]}`")
+                        start_response("200 OK", [("Content-Type", "application/json")])
+                        return [b'{"ok":true}']
+                    except (WealthError, InsufficientFundsError) as exc:
+                        _send_telegram(chat_id, f"❌ Mutasi ditolak: {exc}. Sumber dana default: {wealth_account.name}.")
+                        start_response("200 OK", [("Content-Type", "application/json")])
+                        return [b'{"ok":true}']
                 tx = db.add_transaction(
                     Transaction(
                         None,

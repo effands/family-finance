@@ -146,6 +146,22 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, te
     db: Database = context.application.bot_data["db"]
     category = categorize(parsed.description, db.list_categories())
     uname = user.username or user.first_name or "user"
+    wealth_ledger = WealthLedger(db)
+    wealth_account = wealth_ledger.get_default_account(chat_id, parsed.type)
+    if wealth_account:
+        try:
+            if parsed.type == "income":
+                op = wealth_ledger.create_income(chat_id, wealth_account.id, parsed.amount, parsed.description, category.name, parsed.transaction_date, str(user.id), uname, idempotency_key=f"tg:{update.update_id}")
+            else:
+                op = wealth_ledger.create_expense(chat_id, wealth_account.id, parsed.amount, parsed.description, category.name, parsed.transaction_date, str(user.id), uname, idempotency_key=f"tg:{update.update_id}")
+            summary = wealth_ledger.get_wealth_summary(chat_id)
+            return await update.message.reply_text(
+                f"✅ *Mutasi tercatat dari {wealth_account.name}*\n{parsed.description}: *{format_rupiah(parsed.amount)}*\n"
+                f"Saldo total tercatat: *{format_rupiah(summary.total_wealth)}*\nRef: `{op.id[:10]}`",
+                parse_mode="Markdown",
+            )
+        except (WealthError, InsufficientFundsError) as exc:
+            return await update.message.reply_text(f"❌ Mutasi ditolak: {exc}. Sumber dana default: {wealth_account.name}.")
     tx = db.add_transaction(
         Transaction(
             None,
