@@ -2,7 +2,7 @@ import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from .categorizer import default_categories
-from .models import Category, Transaction, TransactionFilters
+from .models import Category, FinancialAccount, Transaction, TransactionFilters
 
 
 class Database:
@@ -40,6 +40,23 @@ class Database:
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS financial_accounts (
+                    id INTEGER PRIMARY KEY,
+                    chat_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    account_type TEXT NOT NULL CHECK (account_type IN ('bank','ewallet','cash','investment')),
+                    provider TEXT NOT NULL DEFAULT '',
+                    holder_name TEXT NOT NULL DEFAULT '',
+                    account_identifier TEXT NOT NULL DEFAULT '',
+                    currency TEXT NOT NULL DEFAULT 'IDR' CHECK (currency = 'IDR'),
+                    opening_balance INTEGER NOT NULL CHECK (opening_balance >= 0),
+                    opening_balance_date TEXT NOT NULL,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    notes TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS ix_accounts_chat_active ON financial_accounts(chat_id, is_active);
                 CREATE INDEX IF NOT EXISTS ix_tx_chat_date ON transactions(chat_id, transaction_date);
                 CREATE INDEX IF NOT EXISTS ix_tx_user_created ON transactions(user_id, created_at);
                 PRAGMA journal_mode=WAL;
@@ -54,6 +71,54 @@ class Database:
                 (x.user_id, x.username, x.chat_id, x.type, x.amount, x.description, x.category, x.transaction_date.isoformat(), x.created_at.isoformat()),
             )
             return Transaction(cur.lastrowid, x.user_id, x.username, x.chat_id, x.type, x.amount, x.description, x.category, x.transaction_date, x.created_at)
+
+    @staticmethod
+    def _account_from_row(row):
+        if not row:
+            return None
+        return FinancialAccount(
+            id=row["id"], chat_id=row["chat_id"], name=row["name"],
+            account_type=row["account_type"], provider=row["provider"],
+            holder_name=row["holder_name"], account_identifier=row["account_identifier"],
+            currency=row["currency"], opening_balance=row["opening_balance"],
+            opening_balance_date=date.fromisoformat(row["opening_balance_date"]),
+            is_active=bool(row["is_active"]), notes=row["notes"],
+        )
+
+    def create_account(self, account: FinancialAccount) -> FinancialAccount:
+        if account.currency != "IDR":
+            raise ValueError("Akun tahap pertama hanya mendukung IDR")
+        if account.opening_balance < 0:
+            raise ValueError("Saldo awal harus positif atau nol")
+        if account.account_type not in {"bank", "ewallet", "cash", "investment"}:
+            raise ValueError("Jenis akun tidak valid")
+        now = datetime.now().isoformat()
+        with self._conn() as c:
+            cur = c.execute(
+                """INSERT INTO financial_accounts
+                (chat_id,name,account_type,provider,holder_name,account_identifier,currency,opening_balance,opening_balance_date,is_active,notes,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (account.chat_id, account.name.strip(), account.account_type, account.provider.strip(), account.holder_name.strip(), account.account_identifier.strip(), "IDR", account.opening_balance, account.opening_balance_date.isoformat(), int(account.is_active), account.notes.strip(), now, now),
+            )
+            return self._account_from_row(c.execute("SELECT * FROM financial_accounts WHERE id=?", (cur.lastrowid,)).fetchone())
+
+    def list_accounts(self, chat_id: str, include_archived: bool = False) -> list[FinancialAccount]:
+        q = "SELECT * FROM financial_accounts WHERE chat_id=?"
+        params = [chat_id]
+        if not include_archived:
+            q += " AND is_active=1"
+        q += " ORDER BY name COLLATE NOCASE"
+        with self._conn() as c:
+            return [self._account_from_row(r) for r in c.execute(q, params).fetchall()]
+
+    def get_account(self, account_id: int, chat_id: str | None = None) -> FinancialAccount | None:
+        q = "SELECT * FROM financial_accounts WHERE id=?"
+        params = [account_id]
+        if chat_id is not None:
+            q += " AND chat_id=?"
+            params.append(chat_id)
+        with self._conn() as c:
+            return self._account_from_row(c.execute(q, params).fetchone())
 
     def _row(self, r):
         return (
