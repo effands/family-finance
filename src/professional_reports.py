@@ -795,6 +795,8 @@ def render_report_html(report: ReportData, print_mode: bool = False) -> str:
             body {{
                 background: #ffffff !important;
                 color: #0f172a !important;
+                font-size: 11px !important;
+                line-height: 1.35 !important;
             }}
             .no-print {{
                 display: none !important;
@@ -807,58 +809,166 @@ def render_report_html(report: ReportData, print_mode: bool = False) -> str:
                 box-shadow: none !important;
                 border-radius: 0 !important;
             }}
+            .doc-header {{
+                padding-bottom: 12px !important;
+                margin-bottom: 12px !important;
+                border-bottom: 1.5px solid #cbd5e1 !important;
+            }}
+            .doc-brand-mark {{
+                width: 28px !important;
+                height: 28px !important;
+            }}
+            .doc-brand-title {{
+                font-size: 11px !important;
+            }}
+            .doc-brand-desc {{
+                font-size: 9.5px !important;
+            }}
+            .doc-title {{
+                font-size: 20px !important;
+                margin-bottom: 4px !important;
+            }}
+            .doc-meta-row {{
+                font-size: 10.5px !important;
+                gap: 8px !important;
+            }}
+            .doc-meta-pill {{
+                padding: 2px 6px !important;
+            }}
+            .doc-status-badge {{
+                font-size: 9.5px !important;
+                padding: 2px 8px !important;
+            }}
+            .doc-badge-meta {{
+                font-size: 9.5px !important;
+            }}
             .doc-banner {{
                 background: #f8fafc !important;
                 border-color: #cbd5e1 !important;
+                padding: 7px 12px !important;
+                font-size: 10px !important;
+                margin-bottom: 12px !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
+            }}
+            .totals-grid {{
+                gap: 8px !important;
+                margin-bottom: 14px !important;
             }}
             .report-card {{
+                padding: 8px 10px !important;
                 border-color: #cbd5e1 !important;
                 box-shadow: none !important;
+                border-radius: 8px !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }}
-            .card-bar {{
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
+            .card-top {{
+                margin-bottom: 4px !important;
+            }}
+            .card-label {{
+                font-size: 9px !important;
             }}
             .card-icon {{
+                width: 22px !important;
+                height: 22px !important;
+            }}
+            .card-icon svg {{
+                width: 14px !important;
+                height: 14px !important;
+            }}
+            .card-val {{
+                font-size: 15px !important;
+                margin-bottom: 2px !important;
+            }}
+            .card-desc {{
+                font-size: 9px !important;
+            }}
+            .card-bar {{
+                height: 2px !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
+            }}
+            .section-header {{
+                margin-bottom: 6px !important;
+            }}
+            .section-title {{
+                font-size: 11px !important;
+            }}
+            .section-note {{
+                font-size: 9.5px !important;
             }}
             .table-wrap {{
                 border-color: #cbd5e1 !important;
                 box-shadow: none !important;
+                margin-bottom: 14px !important;
+                border-radius: 6px !important;
+            }}
+            table {{
+                font-size: 10px !important;
             }}
             thead {{
                 background: #f1f5f9 !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }}
-            th, td {{
-                border-bottom-color: #cbd5e1 !important;
+            th {{
+                padding: 6px 10px !important;
+                font-size: 9px !important;
+            }}
+            td {{
+                padding: 5px 10px !important;
+                border-bottom-color: #e2e8f0 !important;
+            }}
+            tfoot tr td {{
+                padding: 6px 10px !important;
+                font-size: 10px !important;
             }}
             .badge {{
+                font-size: 8.5px !important;
+                padding: 1px 6px !important;
                 border-color: #94a3b8 !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
+            }}
+            .doc-sign-grid {{
+                padding-top: 10px !important;
+                gap: 12px !important;
+                margin-bottom: 8px !important;
+                page-break-inside: avoid;
+            }}
+            .sign-disclaimer {{
+                font-size: 9px !important;
+                line-height: 1.4 !important;
             }}
             .sign-box {{
                 background: #ffffff !important;
-                border-color: #94a3b8 !important;
+                border-color: #cbd5e1 !important;
+                padding: 6px 10px !important;
+                min-height: 52px !important;
+                border-radius: 6px !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
+            }}
+            .sign-role {{
+                font-size: 8.5px !important;
+            }}
+            .sign-line {{
+                margin: 16px 0 3px !important;
+            }}
+            .sign-name {{
+                font-size: 9px !important;
+            }}
+            .report-footer {{
+                padding-top: 6px !important;
+                font-size: 8.5px !important;
             }}
             tr {{
                 page-break-inside: avoid;
             }}
-            .doc-sign-grid {{
-                page-break-inside: avoid;
-            }}
             @page {{
                 size: A4 portrait;
-                margin: 12mm 14mm 14mm 14mm;
+                margin: 8mm 10mm 8mm 10mm;
             }}
         }}
     </style>
