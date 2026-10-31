@@ -85,6 +85,12 @@ class Database:
                 );
                 CREATE INDEX IF NOT EXISTS ix_ledger_account_date ON ledger_entries(chat_id, account_id, transaction_date);
                 CREATE INDEX IF NOT EXISTS ix_ledger_group ON ledger_entries(chat_id, operation_id);
+                CREATE TABLE IF NOT EXISTS account_preferences (
+                    chat_id TEXT NOT NULL,
+                    operation_kind TEXT NOT NULL,
+                    account_id INTEGER NOT NULL REFERENCES financial_accounts(id),
+                    PRIMARY KEY (chat_id, operation_kind)
+                );
                 CREATE INDEX IF NOT EXISTS ix_tx_chat_date ON transactions(chat_id, transaction_date);
                 CREATE INDEX IF NOT EXISTS ix_tx_user_created ON transactions(user_id, created_at);
                 PRAGMA journal_mode=WAL;

@@ -42,6 +42,38 @@ class WealthLedger:
         if not isinstance(amount, int) or amount <= 0:
             raise WealthError("Nominal harus berupa bilangan bulat positif")
 
+    def archive_account(self, chat_id, account_id, actor_user_id):
+        with self.db._conn() as conn:
+            account = self._account(conn, chat_id, account_id, active=False)
+            if not account["is_active"]:
+                return
+            conn.execute("UPDATE financial_accounts SET is_active=0, updated_at=? WHERE id=? AND chat_id=?", (datetime.now().isoformat(), account_id, chat_id))
+
+    def set_default_account(self, chat_id, operation_kind, account_id):
+        with self.db._conn() as conn:
+            self._account(conn, chat_id, account_id)
+            if operation_kind not in {"income", "expense", "transfer", "cash_withdrawal"}:
+                raise WealthError("Jenis default akun tidak valid")
+            conn.execute("INSERT OR REPLACE INTO account_preferences(chat_id, operation_kind, account_id) VALUES (?,?,?)", (chat_id, operation_kind, account_id))
+
+    def get_default_account(self, chat_id, operation_kind):
+        with self.db._conn() as conn:
+            row = conn.execute("SELECT account_id FROM account_preferences WHERE chat_id=? AND operation_kind=?", (chat_id, operation_kind)).fetchone()
+            return self.db.get_account(row["account_id"], chat_id) if row else None
+
+    def reconcile_account(self, chat_id, account_id, actual_balance, reason, effective_date, actor_user_id, actor_username):
+        if not isinstance(actual_balance, int) or actual_balance < 0:
+            raise WealthError("Saldo aktual harus nol atau lebih")
+        with self.db._conn() as conn:
+            self._account(conn, chat_id, account_id)
+            current = self._balance(conn, chat_id, account_id)
+            difference = actual_balance - current
+            if difference == 0:
+                return self._operation(conn, chat_id, "adjustment", "Rekonsiliasi: " + reason, "", effective_date, actor_user_id, actor_username, "reconcile:%s:%s" % (account_id, effective_date.isoformat())) and self._get_operation(conn, conn.execute("SELECT id FROM ledger_operations WHERE chat_id=? AND idempotency_key=?", (chat_id, "reconcile:%s:%s" % (account_id, effective_date.isoformat()))).fetchone()["id"])
+            op_id = self._operation(conn, chat_id, "adjustment", "Rekonsiliasi: " + reason, "", effective_date, actor_user_id, actor_username, "reconcile:%s:%s" % (account_id, effective_date.isoformat()))
+            self._entry(conn, op_id, chat_id, account_id, "credit" if difference > 0 else "debit", abs(difference), "adjustment", reason, "Penyesuaian Saldo", effective_date)
+            return self._get_operation(conn, op_id)
+
     def _account(self, conn, chat_id, account_id, *, active=True):
         row = conn.execute("SELECT * FROM financial_accounts WHERE id=? AND chat_id=?", (account_id, chat_id)).fetchone()
         if not row or (active and not row["is_active"]):
