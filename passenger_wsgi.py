@@ -8,6 +8,7 @@ import html
 import io
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import time
@@ -26,6 +27,8 @@ from src.formatting import format_date_id, format_rupiah, render_confirmation
 from src.models import Category, Transaction, TransactionFilters
 from src.models import FinancialAccount
 from src.wealth import WealthLedger, WealthError, InsufficientFundsError, parse_idr_amount
+from src.backup import BackupService
+from src.professional_reports import build_professional_report, render_report_html
 from src.parser import ParseError, parse_message
 from src.reports import build_expense_summary, build_income_summary, build_report
 
@@ -361,6 +364,21 @@ def _extract_csv_upload(environ):
         payload = part.split(b"\r\n\r\n", 1)[1]
         return payload.rsplit(b"\r\n", 1)[0].decode("utf-8-sig", "replace")
     return ""
+
+
+def _extract_backup_upload(environ):
+    raw = _read_request_body(environ)
+    content_type = environ.get("CONTENT_TYPE", "")
+    if "multipart/form-data" not in content_type:
+        return raw
+    boundary = content_type.split("boundary=", 1)[-1].strip().strip('"')
+    marker = ("--" + boundary).encode()
+    for part in raw.split(marker):
+        if b'name="file"' not in part or b"\r\n\r\n" not in part:
+            continue
+        payload = part.split(b"\r\n\r\n", 1)[1]
+        return payload.rsplit(b"\r\n", 1)[0]
+    return b""
 
 
 def _import_csv(db, csv_text, chat_id):
@@ -967,6 +985,24 @@ def _wealth_csrf(db: Database) -> str:
     return hashlib.sha256((secret + ":wealth-ledger").encode("utf-8")).hexdigest()
 
 
+def _render_backup_page(db: Database, chat_id: str, csrf_token: str, toast: str = "") -> str:
+    service = BackupService(db)
+    backup_dir = os.path.join(os.path.dirname(db.path), "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+    files = []
+    for name in sorted(os.listdir(backup_dir), reverse=True)[:10]:
+        full = os.path.join(backup_dir, name)
+        if os.path.isfile(full):
+            files.append(f"<tr><td>{html.escape(name)}</td><td>{os.path.getsize(full):,} byte</td><td>{datetime.fromtimestamp(os.path.getmtime(full)).strftime('%Y-%m-%d %H:%M')}</td></tr>")
+    file_rows = "".join(files) or "<tr><td colspan='3'>Belum ada backup lokal.</td></tr>"
+    return f"""<main class='page-shell'><header class='topbar'><a class='brand-lockup' href='/keuangan/dashboard'><div class='brand-mark'>FF</div><div class='brand-info'><span class='brand-badge'><span class='status-dot'></span>Backup Center</span><h1 class='brand-title'>Backup & Laporan</h1><span class='brand-desc'>Cadangkan, pulihkan, cetak, dan audit pembukuan dengan aman</span></div></a><div class='actions'><nav class='header-nav-menu'><a class='header-nav-link' href='/keuangan/dashboard'>Dasbor</a><a class='header-nav-link' href='/keuangan/wealth'>Kekayaan</a><a class='header-nav-link active' href='/keuangan/backup'>Backup</a><a class='header-nav-link' href='/keuangan/settings'>Pengaturan</a></nav><a class='btn btn-ghost' href='/logout'>Keluar</a></div></header>
+    {('<div class="toast toast-success">'+html.escape(toast)+'</div>') if toast else ''}
+    <section class='metric-grid'><article class='metric-card'><div class='metric-label'>Backup Lengkap</div><div class='metric-value val-balance'>ZIP</div><div class='metric-footer'><span>JSON + CSV + checksum</span></div></article><article class='metric-card'><div class='metric-label'>Laporan Profesional</div><div class='metric-value val-income'>4</div><div class='metric-footer'><span>Jurnal, arus kas, kekayaan, rekonsiliasi</span></div></article></section>
+    <section class='breakdown-grid'><div class='panel settings-section-card'><h2 class='settings-section-title'>Ekspor Backup</h2><p class='settings-section-desc'>ZIP adalah format pemulihan utama. JSON untuk integrasi, CSV bundle untuk audit.</p><div class='actions'><a class='btn btn-primary' href='/keuangan/backup/export?format=zip'>Unduh ZIP Lengkap</a><a class='btn btn-secondary' href='/keuangan/backup/export?format=json'>Unduh JSON</a><a class='btn btn-ghost' href='/keuangan/backup/export?format=csv'>Unduh CSV Bundle</a></div></div><div class='panel settings-section-card'><h2 class='settings-section-title'>Impor / Pulihkan</h2><p class='settings-section-desc'>File divalidasi lebih dulu. Merge aman untuk backup berulang; Replace membuat safety backup otomatis.</p><form method='post' action='/keuangan/backup/preview' enctype='multipart/form-data' class='form-stack'><input type='hidden' name='csrf_token' value='{csrf_token}'><input class='form-control' type='file' name='file' accept='.zip,.json' required><select class='form-control' name='mode'><option value='merge'>Preview Merge</option><option value='replace'>Preview Replace</option></select><button class='btn btn-secondary' type='submit'>Validasi & Preview</button></form></div></section>
+    <section class='panel settings-section-card'><div class='settings-section-header'><div><h2 class='settings-section-title'>Laporan Pembukuan</h2><p class='settings-section-desc'>Buka laporan siap cetak; gunakan Print dari browser untuk PDF fisik.</p></div></div><div class='actions'><a class='btn btn-primary' href='/keuangan/reports?type=journal'>Jurnal Transaksi</a><a class='btn btn-secondary' href='/keuangan/reports?type=cashflow'>Rekap Arus Kas</a><a class='btn btn-secondary' href='/keuangan/reports?type=wealth'>Posisi Kekayaan</a><a class='btn btn-ghost' href='/keuangan/reports?type=reconciliation'>Rekonsiliasi</a></div></section>
+    <section class='panel settings-section-card'><h2 class='settings-section-title'>Backup Lokal</h2><p class='settings-section-desc'>Backup lokal disimpan di folder privat dan tidak dapat diakses sebagai file publik.</p><div class='table-responsive'><table class='data-table'><thead><tr><th>Nama</th><th>Ukuran</th><th>Waktu</th></tr></thead><tbody>{file_rows}</tbody></table></div></section></main>"""
+
+
 def _mask_identifier(value: str) -> str:
     value = value or ""
     if len(value) <= 4:
@@ -1008,7 +1044,7 @@ def _render_wealth_page(db: Database, chat_id: str, csrf_token: str, toast_html:
     operation_rows = "".join(_operation_row(r) for r in ledger.list_operations(chat_id)) or "<tr><td colspan='5'><div class='empty-state-box'>Belum ada mutasi wealth.</div></td></tr>"
     return f"""<main class='page-shell'>
       <header class='topbar'><a class='brand-lockup' href='/keuangan/dashboard'><div class='brand-mark'>FF</div><div class='brand-info'><span class='brand-badge'><span class='status-dot'></span>Wealth Center</span><h1 class='brand-title'>Total Kekayaan</h1><span class='brand-desc'>Saldo tercatat lintas bank, e-wallet, cash, dan investasi</span></div></a>
-      <div class='actions'><nav class='header-nav-menu'><a class='header-nav-link' href='/keuangan/dashboard'>{_svg_icon('layout-dashboard')} Dasbor</a><a class='header-nav-link active' href='/keuangan/wealth'>{_svg_icon('wallet')} Kekayaan</a><a class='header-nav-link' href='/keuangan/settings'>{_svg_icon('settings')} Pengaturan</a></nav><a class='btn btn-secondary' href='/keuangan/wealth/export.csv'>Unduh CSV</a><a class='btn btn-ghost' href='/logout'>{_svg_icon('logout')} Keluar</a></div></header>
+      <div class='actions'><nav class='header-nav-menu'><a class='header-nav-link' href='/keuangan/dashboard'>{_svg_icon('layout-dashboard')} Dasbor</a><a class='header-nav-link active' href='/keuangan/wealth'>{_svg_icon('wallet')} Kekayaan</a><a class='header-nav-link' href='/keuangan/backup'>Backup</a><a class='header-nav-link' href='/keuangan/settings'>{_svg_icon('settings')} Pengaturan</a></nav><a class='btn btn-secondary' href='/keuangan/wealth/export.csv'>Unduh CSV</a><a class='btn btn-ghost' href='/logout'>{_svg_icon('logout')} Keluar</a></div></header>
       {toast_html}
       <section class='metric-grid'>
         <article class='metric-card'><div class='metric-label'>Total Kekayaan</div><div class='metric-value val-balance'>{format_rupiah(summary.total_wealth)}</div><div class='metric-footer'><span>Semua akun aktif</span><span class='metric-tag tag-neutral'>IDR</span></div></article>
@@ -1092,6 +1128,79 @@ def _dashboard_response(environ, start_response):
 
     # Parse Queries & Body
     query = parse_qs(environ.get("QUERY_STRING", ""))
+
+    # BACKUP & PROFESSIONAL REPORTS
+    if path.endswith("/backup/export") and environ.get("REQUEST_METHOD") == "GET":
+        output_format = query.get("format", ["zip"])[0]
+        try:
+            payload = BackupService(db).export_snapshot(chat_id, output_format)
+            extension = "zip" if output_format in {"zip", "csv"} else "json"
+            filename = f"finance-family-backup-{date.today().isoformat()}.{extension}"
+            if output_format == "zip":
+                backup_dir = os.path.join(os.path.dirname(db.path), "backups")
+                os.makedirs(backup_dir, exist_ok=True)
+                with open(os.path.join(backup_dir, filename), "wb") as backup_file:
+                    backup_file.write(payload)
+            start_response("200 OK", [("Content-Type", "application/zip" if extension == "zip" else "application/json; charset=utf-8"), ("Content-Disposition", f'attachment; filename="{filename}"'), ("Content-Length", str(len(payload)))])
+            return [payload]
+        except ValueError as exc:
+            start_response("400 Bad Request", [("Content-Type", "text/plain; charset=utf-8")])
+            return [str(exc).encode("utf-8")]
+
+    if path.endswith("/backup/preview") and environ.get("REQUEST_METHOD") == "POST":
+        body = _extract_backup_upload(environ)
+        try:
+            if len(body) > 25 * 1024 * 1024:
+                raise ValueError("Ukuran file backup maksimal 25 MB")
+            service = BackupService(db)
+            preview = service.preview(body, "upload.zip", chat_id)
+            backup_dir = os.path.join(os.path.dirname(db.path), "backups")
+            os.makedirs(backup_dir, exist_ok=True)
+            token = hashlib.sha256(body).hexdigest()
+            pending = os.path.join(backup_dir, "pending-" + token + ".zip")
+            with open(pending, "wb") as pending_file:
+                pending_file.write(body)
+            csrf = _wealth_csrf(db)
+            body_html = f"<main class='page-shell'><section class='panel settings-section-card'><h1>Preview Import Backup</h1><p>Format: {html.escape(preview.format)} · Chat: {html.escape(preview.chat_id)}</p><pre>{html.escape(json.dumps(preview.counts, indent=2))}</pre><p>Merge tidak menggandakan record. Replace akan mengganti data keluarga setelah safety backup.</p><form method='post' action='/keuangan/backup/restore' class='actions'><input type='hidden' name='csrf_token' value='{csrf}'><input type='hidden' name='token' value='{token}'><button class='btn btn-primary' name='mode' value='merge'>Pulihkan Merge</button><button class='btn btn-danger' name='mode' value='replace' onclick=\"return confirm('Buat safety backup dan ganti data?')\">Pulihkan Replace</button><a class='btn btn-ghost' href='/keuangan/backup'>Batal</a></form></section></main>"
+            start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
+            return _html_page("Preview Backup", body_html)
+        except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            start_response("400 Bad Request", [("Content-Type", "text/plain; charset=utf-8")])
+            return [f"Backup ditolak: {exc}".encode("utf-8")]
+
+    if path.endswith("/backup/restore") and environ.get("REQUEST_METHOD") == "POST":
+        length = int(environ.get("CONTENT_LENGTH") or 0)
+        form = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "replace"))
+        if form.get("csrf_token", [""])[0] != _wealth_csrf(db):
+            start_response("403 Forbidden", [("Content-Type", "text/plain; charset=utf-8")])
+            return [b"CSRF token tidak valid"]
+        try:
+            token = form.get("token", [""])[0]
+            pending = os.path.join(os.path.dirname(db.path), "backups", "pending-" + token + ".zip")
+            if not token or not os.path.isfile(pending) or len(token) != 64:
+                raise ValueError("Preview backup tidak ditemukan atau sudah kedaluwarsa")
+            mode = form.get("mode", ["merge"])[0]
+            with open(pending, "rb") as pending_file:
+                pending_payload = pending_file.read()
+            result = BackupService(db).restore(pending_payload, "backup.zip", chat_id, mode, "web", confirm_replace=(mode == "replace"))
+            os.remove(pending)
+            start_response("303 See Other", [("Location", f"/keuangan/backup?toast=Restore {result.mode} berhasil: {result.inserted} record baru")])
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            start_response("303 See Other", [("Location", f"/keuangan/backup?toast={quote_plus('Restore gagal: ' + str(exc)[:120])}")])
+        return [b""]
+
+    if path.endswith("/backup") and environ.get("REQUEST_METHOD") == "GET":
+        body = _render_backup_page(db, chat_id, _wealth_csrf(db), query.get("toast", [""])[0])
+        start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
+        return _html_page("Backup & Laporan", body)
+
+    if path.endswith("/reports") and environ.get("REQUEST_METHOD") == "GET":
+        report_type = query.get("type", ["cashflow"])[0]
+        start = date.fromisoformat(query["start"][0]) if query.get("start") else None
+        end = date.fromisoformat(query["end"][0]) if query.get("end") else None
+        report = build_professional_report(db, chat_id, report_type, start, end)
+        start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
+        return [render_report_html(report).encode("utf-8")]
 
     # WEALTH: account and double-entry ledger operations
     if path.endswith("/wealth/account/save") and environ.get("REQUEST_METHOD") == "POST":
@@ -1974,6 +2083,9 @@ def _dashboard_response(environ, start_response):
         <a class="header-nav-link" href="/keuangan/wealth">
           {_svg_icon("wallet")} Kekayaan
         </a>
+        <a class="header-nav-link" href="/keuangan/backup">
+          Backup
+        </a>
         <a class="header-nav-link" href="/keuangan/settings">
           {_svg_icon("settings")} Pengaturan
         </a>
@@ -2490,6 +2602,11 @@ def application(environ, start_response):
         "/wealth/legacy/attribute",
         "/wealth/export.csv",
         "/wealth/reconcile",
+        "/backup",
+        "/backup/export",
+        "/backup/preview",
+        "/backup/restore",
+        "/reports",
         "/settings",
         "/settings/category/save",
         "/settings/category/delete",
