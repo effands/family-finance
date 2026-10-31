@@ -5,7 +5,7 @@ import pytest
 
 from src.database import Database
 from src.models import FinancialAccount
-from src.wealth import WealthLedger, InsufficientFundsError
+from src.wealth import WealthLedger, InsufficientFundsError, WealthError, parse_idr_amount
 
 
 def setup_accounts(tmp_path):
@@ -105,3 +105,11 @@ def test_atm_requires_cash_destination_and_transfer_fee_is_expense(tmp_path):
     summary = ledger.get_wealth_summary("family")
     assert summary.expense == 5_000
     assert summary.total_wealth == 99_995_000
+
+
+def test_idr_parser_rejects_fractional_or_ambiguous_amounts():
+    assert parse_idr_amount("Rp 1.000.000") == 1_000_000
+    with pytest.raises(WealthError):
+        parse_idr_amount("1.000,00")
+    with pytest.raises(WealthError):
+        parse_idr_amount("abc")

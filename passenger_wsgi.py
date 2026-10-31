@@ -24,7 +24,7 @@ from src.export_report import generate_excel, generate_pdf
 from src.formatting import format_date_id, format_rupiah, render_confirmation
 from src.models import Category, Transaction, TransactionFilters
 from src.models import FinancialAccount
-from src.wealth import WealthLedger, WealthError, InsufficientFundsError
+from src.wealth import WealthLedger, WealthError, InsufficientFundsError, parse_idr_amount
 from src.parser import ParseError, parse_message
 from src.reports import build_expense_summary, build_income_summary, build_report
 
@@ -986,6 +986,10 @@ def _render_wealth_page(db: Database, chat_id: str, csrf_token: str, toast_html:
         for a in accounts
     ) or "<tr><td colspan='5'><div class='empty-state-box'><div class='empty-state-title'>Belum ada akun keuangan</div><div class='empty-state-desc'>Tambahkan rekening bank, e-wallet, cash, atau investasi untuk mulai menghitung total kekayaan.</div></div></td></tr>"
     active_options = "".join(f"<option value='{a.id}'>{html.escape(a.name)} — {html.escape(a.provider)}</option>" for a in accounts if a.is_active)
+    operation_rows = "".join(
+        f"<tr><td>{html.escape(r['transaction_date'])}</td><td><strong>{html.escape(r['operation_type'])}</strong></td><td>{html.escape(r['description'])}</td><td>{format_rupiah(r['debits'])}</td><td>{'Dibatalkan' if r['reversed_operation_id'] else ('<form method=\"post\" action=\"/keuangan/wealth/operation/reverse\"><input type=\"hidden\" name=\"csrf_token\" value=\"' + csrf_token + '\"><input type=\"hidden\" name=\"operation_id\" value=\"' + html.escape(r['id']) + '\"><input class=\"form-control\" name=\"reason\" placeholder=\"Alasan\" required><button class=\"btn btn-ghost\" type=\"submit\">Batalkan</button></form>')}</td></tr>"
+        for r in ledger.list_operations(chat_id)
+    ) or "<tr><td colspan='5'><div class='empty-state-box'>Belum ada mutasi wealth.</div></td></tr>"
     return f"""<main class='page-shell'>
       <header class='topbar'><a class='brand-lockup' href='/keuangan/dashboard'><div class='brand-mark'>FF</div><div class='brand-info'><span class='brand-badge'><span class='status-dot'></span>Wealth Center</span><h1 class='brand-title'>Total Kekayaan</h1><span class='brand-desc'>Saldo tercatat lintas bank, e-wallet, cash, dan investasi</span></div></a>
       <div class='actions'><nav class='header-nav-menu'><a class='header-nav-link' href='/keuangan/dashboard'>{_svg_icon('layout-dashboard')} Dasbor</a><a class='header-nav-link active' href='/keuangan/wealth'>{_svg_icon('wallet')} Kekayaan</a><a class='header-nav-link' href='/keuangan/settings'>{_svg_icon('settings')} Pengaturan</a></nav><a class='btn btn-ghost' href='/logout'>{_svg_icon('logout')} Keluar</a></div></header>
@@ -1003,6 +1007,8 @@ def _render_wealth_page(db: Database, chat_id: str, csrf_token: str, toast_html:
         <form method='post' action='/keuangan/wealth/account/save' class='form-stack'><input type='hidden' name='csrf_token' value='{csrf_token}'><div class='form-group'><label>Nama panggilan</label><input class='form-control' name='name' required placeholder='Mandiri Utama'></div><div class='form-group'><label>Jenis akun</label><select class='form-control' name='account_type'><option value='bank'>Bank</option><option value='ewallet'>E-wallet</option><option value='cash'>Cash</option><option value='investment'>Investasi</option></select></div><div class='form-group'><label>Bank / provider</label><input class='form-control' name='provider' placeholder='Bank Mandiri / DANA / SBN'></div><div class='form-group'><label>Nama pemilik</label><input class='form-control' name='holder_name' placeholder='Keluarga'></div><div class='form-group'><label>Nomor rekening / ID / nomor HP</label><input class='form-control' name='account_identifier'></div><div class='form-group'><label>Saldo awal (IDR)</label><input class='form-control' name='opening_balance' inputmode='numeric' required value='0'></div><div class='form-group'><label>Tanggal saldo awal</label><input class='form-control' type='date' name='opening_balance_date' required value='{date.today().isoformat()}'></div><button class='btn btn-primary' type='submit'>Simpan Akun</button></form>
       </div><div class='panel settings-section-card'><div class='settings-section-header'><div><h2 class='settings-section-title'>Catat Mutasi</h2><p class='settings-section-desc'>Pilih sumber dana untuk pengeluaran, transfer, dan tarik ATM.</p></div></div><form method='post' action='/keuangan/wealth/operation/create' class='form-stack'><input type='hidden' name='csrf_token' value='{csrf_token}'><div class='form-group'><label>Jenis</label><select class='form-control' name='operation_type'><option value='expense'>Pengeluaran</option><option value='cash_withdrawal'>Tarik tunai ATM</option><option value='transfer'>Transfer antar akun</option></select></div><div class='form-group'><label>Dari akun</label><select class='form-control' name='source_account_id' required>{active_options}</select></div><div class='form-group'><label>Ke akun (untuk transfer/ATM)</label><select class='form-control' name='destination_account_id'><option value=''>— pilih bila diperlukan —</option>{active_options}</select></div><div class='form-group'><label>Nominal (IDR)</label><input class='form-control' name='amount' inputmode='numeric' required></div><div class='form-group'><label>Keterangan</label><input class='form-control' name='description' required placeholder='Belanja / tarik tunai / transfer'></div><button class='btn btn-primary' type='submit'>Catat Mutasi</button></form></div></section>
       <section class='panel settings-section-card'><div class='settings-section-header'><div><h2 class='settings-section-title'>Rekonsiliasi Saldo</h2><p class='settings-section-desc'>Jika saldo aplikasi berbeda dari saldo nyata, masukkan saldo aktual. Sistem membuat adjustment yang dapat diaudit.</p></div></div><form method='post' action='/keuangan/wealth/reconcile' class='form-stack'><input type='hidden' name='csrf_token' value='{csrf_token}'><div class='form-group'><label>Akun</label><select class='form-control' name='account_id' required>{active_options}</select></div><div class='form-group'><label>Saldo aktual (IDR)</label><input class='form-control' name='actual_balance' inputmode='numeric' required></div><div class='form-group'><label>Alasan</label><input class='form-control' name='reason' required placeholder='Cocokkan mutasi bank'></div><button class='btn btn-secondary' type='submit'>Simpan Rekonsiliasi</button></form></section>
+      <section class='panel settings-section-card'><div class='settings-section-header'><div><h2 class='settings-section-title'>Sumber Dana Default</h2><p class='settings-section-desc'>Dipakai oleh input cepat Telegram bila transaksi tidak menyebut sumber secara eksplisit.</p></div></div><form method='post' action='/keuangan/wealth/default/save' class='form-stack'><input type='hidden' name='csrf_token' value='{csrf_token}'><div class='form-group'><label>Jenis transaksi</label><select class='form-control' name='operation_kind'><option value='expense'>Pengeluaran</option><option value='income'>Pemasukan</option></select></div><div class='form-group'><label>Akun default</label><select class='form-control' name='account_id' required>{active_options}</select></div><button class='btn btn-secondary' type='submit'>Simpan Default</button></form></section>
+      <section class='panel settings-section-card'><div class='settings-section-header'><div><h2 class='settings-section-title'>Riwayat Ledger & Koreksi</h2><p class='settings-section-desc'>Setiap operasi dapat ditelusuri dan dibatalkan dengan reversal; histori asli tidak dihapus.</p></div></div><div class='table-responsive'><table class='data-table'><thead><tr><th>Tanggal</th><th>Jenis</th><th>Keterangan</th><th>Debit</th><th>Aksi</th></tr></thead><tbody>{operation_rows}</tbody></table></div></section>
       {CREDIT_HTML}</main>"""
 
 
@@ -1078,12 +1084,13 @@ def _dashboard_response(environ, start_response):
         if form.get("csrf_token", [""])[0] != _wealth_csrf(db):
             start_response("403 Forbidden", [("Content-Type", "text/plain; charset=utf-8")])
             return [b"CSRF token tidak valid"]
-        def money(value):
-            raw = value.replace(".", "").replace(",", "").replace("Rp", "").strip()
-            return int(raw) if raw.isdigit() else 0
         try:
             opening_date = date.fromisoformat(form.get("opening_balance_date", [date.today().isoformat()])[0])
-            db.create_account(FinancialAccount(None, chat_id, form.get("name", [""])[0].strip(), form.get("account_type", ["bank"])[0], form.get("provider", [""])[0], form.get("holder_name", [""])[0], form.get("account_identifier", [""])[0], "IDR", money(form.get("opening_balance", ["0"])[0]), opening_date))
+            name = form.get("name", [""])[0].strip()
+            if not name:
+                raise WealthError("Nama akun wajib diisi")
+            opening = parse_idr_amount(form.get("opening_balance", ["0"])[0]) if form.get("opening_balance", ["0"])[0].strip() else 0
+            db.create_account(FinancialAccount(None, chat_id, name, form.get("account_type", ["bank"])[0], form.get("provider", [""])[0], form.get("holder_name", [""])[0], form.get("account_identifier", [""])[0], "IDR", opening, opening_date))
             start_response("303 See Other", [("Location", "/keuangan/wealth?toast=account_saved")])
         except (ValueError, WealthError) as exc:
             start_response("303 See Other", [("Location", f"/keuangan/wealth?toast=wealth_error&detail={quote_plus(str(exc)[:140])}")])
@@ -1096,8 +1103,7 @@ def _dashboard_response(environ, start_response):
             start_response("403 Forbidden", [("Content-Type", "text/plain; charset=utf-8")])
             return [b"CSRF token tidak valid"]
         try:
-            amount_raw = form.get("amount", ["0"])[0].replace(".", "").replace(",", "").replace("Rp", "").strip()
-            amount = int(amount_raw) if amount_raw.isdigit() else 0
+            amount = parse_idr_amount(form.get("amount", ["0"])[0])
             kind = form.get("operation_type", ["expense"])[0]
             source = int(form.get("source_account_id", ["0"])[0])
             destination_raw = form.get("destination_account_id", [""])[0]
@@ -1136,10 +1142,35 @@ def _dashboard_response(environ, start_response):
             start_response("403 Forbidden", [("Content-Type", "text/plain; charset=utf-8")])
             return [b"CSRF token tidak valid"]
         try:
-            raw = form.get("actual_balance", ["0"])[0].replace(".", "").replace(",", "").replace("Rp", "").strip()
-            actual = int(raw) if raw.isdigit() else -1
+            actual = parse_idr_amount(form.get("actual_balance", ["0"])[0], allow_zero=True)
             WealthLedger(db).reconcile_account(chat_id, int(form.get("account_id", ["0"])[0]), actual, form.get("reason", ["Rekonsiliasi saldo"])[0], date.today(), "web", "Admin")
             start_response("303 See Other", [("Location", "/keuangan/wealth?toast=reconciled")])
+        except (ValueError, WealthError) as exc:
+            start_response("303 See Other", [("Location", f"/keuangan/wealth?toast=wealth_error&detail={quote_plus(str(exc)[:140])}")])
+        return [b""]
+
+    if path.endswith("/wealth/operation/reverse") and environ.get("REQUEST_METHOD") == "POST":
+        length = int(environ.get("CONTENT_LENGTH") or 0)
+        form = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "replace"))
+        if form.get("csrf_token", [""])[0] != _wealth_csrf(db):
+            start_response("403 Forbidden", [("Content-Type", "text/plain; charset=utf-8")])
+            return [b"CSRF token tidak valid"]
+        try:
+            WealthLedger(db).reverse_operation(chat_id, form.get("operation_id", [""])[0], "web", form.get("reason", ["Koreksi manual"])[0])
+            start_response("303 See Other", [("Location", "/keuangan/wealth?toast=reversed")])
+        except (ValueError, WealthError) as exc:
+            start_response("303 See Other", [("Location", f"/keuangan/wealth?toast=wealth_error&detail={quote_plus(str(exc)[:140])}")])
+        return [b""]
+
+    if path.endswith("/wealth/default/save") and environ.get("REQUEST_METHOD") == "POST":
+        length = int(environ.get("CONTENT_LENGTH") or 0)
+        form = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "replace"))
+        if form.get("csrf_token", [""])[0] != _wealth_csrf(db):
+            start_response("403 Forbidden", [("Content-Type", "text/plain; charset=utf-8")])
+            return [b"CSRF token tidak valid"]
+        try:
+            WealthLedger(db).set_default_account(chat_id, form.get("operation_kind", ["expense"])[0], int(form.get("account_id", ["0"])[0]))
+            start_response("303 See Other", [("Location", "/keuangan/wealth?toast=default_saved")])
         except (ValueError, WealthError) as exc:
             start_response("303 See Other", [("Location", f"/keuangan/wealth?toast=wealth_error&detail={quote_plus(str(exc)[:140])}")])
         return [b""]
@@ -1554,6 +1585,10 @@ def _dashboard_response(environ, start_response):
             toast_html = '<div class="toast toast-success" id="main-toast"><div class="toast-title">Akun Diarsipkan</div><div class="toast-msg">Akun tidak muncul sebagai sumber baru, tetapi histori tetap tersimpan.</div></div>'
         elif toast_type == "reconciled":
             toast_html = '<div class="toast toast-success" id="main-toast"><div class="toast-title">Rekonsiliasi Tersimpan</div><div class="toast-msg">Selisih saldo dicatat sebagai adjustment yang dapat diaudit.</div></div>'
+        elif toast_type == "reversed":
+            toast_html = '<div class="toast toast-success" id="main-toast"><div class="toast-title">Operasi Dibatalkan</div><div class="toast-msg">Reversal tercatat tanpa menghapus histori asli.</div></div>'
+        elif toast_type == "default_saved":
+            toast_html = '<div class="toast toast-success" id="main-toast"><div class="toast-title">Sumber Default Disimpan</div><div class="toast-msg">Input cepat Telegram sekarang memakai akun default tersebut.</div></div>'
         elif toast_type == "wealth_error":
             toast_html = f'<div class="toast toast-error" id="main-toast"><div class="toast-title">Mutasi Ditolak</div><div class="toast-msg">{html.escape(query.get("detail", ["Periksa data input."])[0])}</div></div>'
         body = _render_wealth_page(db, chat_id, _wealth_csrf(db), toast_html)
@@ -2401,6 +2436,8 @@ def application(environ, start_response):
         "/wealth/account/save",
         "/wealth/account/archive",
         "/wealth/operation/create",
+        "/wealth/operation/reverse",
+        "/wealth/default/save",
         "/wealth/reconcile",
         "/settings",
         "/settings/category/save",

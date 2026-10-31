@@ -11,6 +11,26 @@ class WealthError(ValueError):
     pass
 
 
+def parse_idr_amount(value: str, allow_zero: bool = False) -> int:
+    """Parse Indonesian whole-rupiah input without silently changing magnitude."""
+    raw = str(value or "").strip().replace("Rp", "").replace("rp", "").replace(" ", "")
+    if not raw or raw.startswith("-"):
+        raise WealthError("Nominal harus berupa rupiah bulat positif")
+    if "," in raw:
+        raise WealthError("Nominal rupiah tidak boleh memakai pecahan")
+    if "." in raw:
+        parts = raw.split(".")
+        if any(not p.isdigit() for p in parts) or any(len(p) != 3 for p in parts[1:]):
+            raise WealthError("Format nominal tidak valid; gunakan contoh 1.500.000")
+        raw = "".join(parts)
+    if not raw.isdigit():
+        raise WealthError("Nominal harus berupa angka rupiah")
+    amount = int(raw)
+    if amount < 0 or (amount == 0 and not allow_zero):
+        raise WealthError("Nominal harus lebih besar dari nol")
+    return amount
+
+
 class InsufficientFundsError(WealthError):
     pass
 
@@ -234,3 +254,11 @@ class WealthLedger:
         income = sum(r["amount"] for r in rows if r["operation_type"] == "income" and r["direction"] == "credit")
         expense = sum(r["amount"] for r in rows if r["entry_type"] in {"expense", "fee"} and r["direction"] == "debit")
         return WealthSummary(total, liquid, investments, cash, income, expense)
+
+    def list_operations(self, chat_id, limit=100):
+        with self.db._conn() as conn:
+            rows = conn.execute("""SELECT o.*, COUNT(e.id) AS entry_count,
+                COALESCE(SUM(CASE WHEN e.direction='debit' THEN e.amount ELSE 0 END),0) AS debits
+                FROM ledger_operations o LEFT JOIN ledger_entries e ON e.operation_id=o.id
+                WHERE o.chat_id=? GROUP BY o.id ORDER BY o.transaction_date DESC, o.created_at DESC LIMIT ?""", (chat_id, limit)).fetchall()
+            return [dict(r) for r in rows]
