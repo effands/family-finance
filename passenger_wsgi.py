@@ -9,6 +9,7 @@ import io
 import json
 import os
 import sqlite3
+import shutil
 import subprocess
 import sys
 import time
@@ -327,6 +328,33 @@ def _filters(query, chat_id):
 def _safe_csv_value(value):
     value = "" if value is None else str(value)
     return "'" + value if value[:1] in "=-+@" else value
+
+
+def _run_git_update(base_dir):
+    """Pull the checked-out branch safely, preserving a database snapshot."""
+    branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=base_dir, stderr=subprocess.STDOUT, text=True, timeout=5).strip()
+    if not branch or branch == "HEAD":
+        raise RuntimeError("Branch production tidak terdeteksi")
+    database_path = load_settings().database_path
+    backup_path = f"{database_path}.pre-git-update-{date.today().isoformat()}"
+    if os.path.exists(database_path):
+        shutil.copy2(database_path, backup_path)
+    fetch = subprocess.run(["git", "fetch", "origin", branch, "--prune"], cwd=base_dir, capture_output=True, text=True, timeout=45)
+    if fetch.returncode != 0:
+        raise RuntimeError((fetch.stderr or fetch.stdout or "git fetch gagal").strip()[-500:])
+    pull = subprocess.run(["git", "pull", "--ff-only", "origin", branch], cwd=base_dir, capture_output=True, text=True, timeout=45)
+    output = ((pull.stdout or "") + "\n" + (pull.stderr or "")).strip()
+    if pull.returncode != 0:
+        raise RuntimeError(output[-500:] or "git pull gagal")
+    compile_result = subprocess.run([sys.executable, "-m", "compileall", "-q", "src", "passenger_wsgi.py"], cwd=base_dir, capture_output=True, text=True, timeout=45)
+    if compile_result.returncode != 0:
+        raise RuntimeError((compile_result.stderr or compile_result.stdout or "compile check gagal").strip()[-500:])
+    restart_path = os.path.join(base_dir, "tmp", "restart.txt")
+    os.makedirs(os.path.dirname(restart_path), exist_ok=True)
+    with open(restart_path, "w", encoding="utf-8") as restart_file:
+        restart_file.write(str(time.time()))
+    commit = subprocess.check_output(["git", "log", "-1", "--format=%h - %s"], cwd=base_dir, stderr=subprocess.STDOUT, text=True, timeout=5).strip()
+    return branch, commit, backup_path, output[-500:]
 
 
 def _summary(rows):
@@ -760,8 +788,8 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
             Tarik pembaruan kode sumber langsung dari repositori GitHub ke VPS / server hosting tanpa harus masuk ke terminal SSH atau cPanel admin.
           </p>
         </div>
-        <form method="post" action="/keuangan/settings/system/update" onsubmit="return confirmSystemUpdate(this);">
-          <button class="btn btn-primary" type="submit" id="btn-git-update">
+        <form method="post" action="/keuangan/settings/system/update">
+          <button class="btn btn-primary" type="button" id="btn-git-update" onclick="openModal('modal-git-update')">
             {_svg_icon("refresh")} Perbarui dari GitHub (Git Pull)
           </button>
         </form>
@@ -911,6 +939,18 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
         <button class="btn btn-danger" type="submit">Ya, Hapus Kategori</button>
       </div>
     </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-git-update" role="dialog" aria-modal="true" aria-labelledby="git-update-title">
+  <div class="modal-card git-update-modal">
+    <div class="modal-header"><div><div class="modal-kicker">Perlindungan update</div><h3 id="git-update-title">Perbarui kode dari GitHub</h3></div><button class="modal-close-btn" type="button" aria-label="Tutup" onclick="closeModal('modal-git-update')">&times;</button></div>
+    <div class="modal-body">
+      <p class="git-update-lead">Sistem akan menarik branch production yang sedang aktif di server, bukan branch yang ditebak.</p>
+      <div class="git-update-checklist"><div><strong>Branch aktif</strong><span>{html.escape(git_branch)}</span></div><div><strong>Commit sekarang</strong><span>{html.escape(git_commit)}</span></div><div><strong>Perlindungan</strong><span>Backup database + fast-forward only + compile check</span></div><div><strong>Dampak</strong><span>Aplikasi dimuat ulang sebentar setelah kode berhasil diperbarui</span></div></div>
+      <p class="setting-help-text">Jika branch memiliki perubahan lokal atau konflik, pembaruan dibatalkan dan data tidak ditimpa.</p>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" type="button" onclick="closeModal('modal-git-update')">Batalkan</button><form method="post" action="/keuangan/settings/system/update"><button class="btn btn-primary" type="submit" id="btn-git-update-confirm">Tarik & Muat Ulang</button></form></div>
   </div>
 </div>
 
@@ -1680,39 +1720,13 @@ def _dashboard_response(environ, start_response):
 
     # SETTINGS: System Update via Git Pull (VPS / Server Auto-Update)
     if path.endswith("/settings/system/update") and environ.get("REQUEST_METHOD") == "POST":
-        output_lines = []
         is_success = False
+        output_lines = []
         try:
-            pull_res = subprocess.run(["git", "pull", "origin", "main"], capture_output=True, text=True, timeout=30)
-            out = (pull_res.stdout or "").strip() or (pull_res.stderr or "").strip()
-            output_lines.append(out)
-            if pull_res.returncode == 0:
-                is_success = True
-            else:
-                fallback_res = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=30)
-                fb_out = (fallback_res.stdout or "").strip() or (fallback_res.stderr or "").strip()
-                if fallback_res.returncode == 0:
-                    is_success = True
-                    output_lines.append(fb_out)
-                else:
-                    output_lines.append(f"Exit code: {pull_res.returncode}")
-
-            # Touch tmp/restart.txt to reload Passenger WSGI on VPS/hosting
-            try:
-                base_dir = os.path.dirname(os.path.abspath(__file__))
-                tmp_dir = os.path.join(base_dir, "tmp")
-                os.makedirs(tmp_dir, exist_ok=True)
-                with open(os.path.join(tmp_dir, "restart.txt"), "w") as rf:
-                    rf.write(str(time.time()))
-            except Exception:
-                pass
-
-            # Recompile python bytecode
-            try:
-                import compileall
-                compileall.compile_dir(os.path.dirname(os.path.abspath(__file__)), force=False, quiet=1)
-            except Exception:
-                pass
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            branch, commit, backup_path, command_output = _run_git_update(base_dir)
+            output_lines.append(f"Branch {branch}; commit {commit}; backup {backup_path}; {command_output}")
+            is_success = True
 
         except Exception as exc:
             output_lines.append(f"Error: {exc}")
