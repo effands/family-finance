@@ -66,3 +66,13 @@ def test_schema_migration_is_idempotent(tmp_path):
     db.initialize()
     db.initialize()
     assert db.list_accounts("family") == []
+
+
+def test_account_creation_idempotency_returns_existing_account(tmp_path):
+    db = Database(str(tmp_path / "wealth.db"))
+    db.initialize()
+    account = FinancialAccount(None, "family", "Mandiri", "bank", "Mandiri", "Keluarga", "1234", "IDR", 100, date(2026, 11, 1))
+    first = db.create_account(account, idempotency_key="account-submit-1")
+    retry = db.create_account(account, idempotency_key="account-submit-1")
+    assert retry.id == first.id
+    assert len(db.list_accounts("family")) == 1

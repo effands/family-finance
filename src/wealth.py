@@ -262,3 +262,22 @@ class WealthLedger:
                 FROM ledger_operations o LEFT JOIN ledger_entries e ON e.operation_id=o.id
                 WHERE o.chat_id=? GROUP BY o.id ORDER BY o.transaction_date DESC, o.created_at DESC LIMIT ?""", (chat_id, limit)).fetchall()
             return [dict(r) for r in rows]
+
+    def attribute_legacy_transaction(self, chat_id, transaction_id, account_id, actor_user_id, actor_username):
+        tx = self.db.get_transaction(transaction_id)
+        if not tx or str(tx.chat_id) != str(chat_id):
+            raise WealthError("Transaksi legacy tidak ditemukan")
+        with self.db._conn() as conn:
+            self._begin(conn)
+            linked = conn.execute("SELECT operation_id FROM legacy_ledger_links WHERE transaction_id=? AND chat_id=?", (transaction_id, chat_id)).fetchone()
+            if linked:
+                return self._get_operation(conn, linked["operation_id"])
+        key = f"legacy:{transaction_id}"
+        if tx.type == "income":
+            op = self.create_income(chat_id, account_id, tx.amount, tx.description, tx.category, tx.transaction_date, actor_user_id, actor_username, idempotency_key=key)
+        else:
+            op = self.create_expense(chat_id, account_id, tx.amount, tx.description, tx.category, tx.transaction_date, actor_user_id, actor_username, idempotency_key=key)
+        with self.db._conn() as conn:
+            self._begin(conn)
+            conn.execute("INSERT OR IGNORE INTO legacy_ledger_links(transaction_id,chat_id,operation_id,linked_at) VALUES (?,?,?,?)", (transaction_id, chat_id, op.id, datetime.now().isoformat()))
+        return op

@@ -5,6 +5,7 @@ import pytest
 
 from src.database import Database
 from src.models import FinancialAccount
+from src.models import Transaction
 from src.wealth import WealthLedger, InsufficientFundsError, WealthError, parse_idr_amount
 
 
@@ -113,3 +114,14 @@ def test_idr_parser_rejects_fractional_or_ambiguous_amounts():
         parse_idr_amount("1.000,00")
     with pytest.raises(WealthError):
         parse_idr_amount("abc")
+
+
+def test_legacy_transaction_can_be_attributed_once_without_duplicate_wealth_entry(tmp_path):
+    db, mandiri, _, _ = setup_accounts(tmp_path)
+    legacy = db.add_transaction(Transaction(None, "u", "Ayah", "family", "expense", 25_000, "Belanja lama", "Makanan", date(2026, 11, 1), date(2026, 11, 1)))
+    ledger = WealthLedger(db)
+    first = ledger.attribute_legacy_transaction("family", legacy.id, mandiri.id, "u", "Ayah")
+    second = ledger.attribute_legacy_transaction("family", legacy.id, mandiri.id, "u", "Ayah")
+    assert first.id == second.id
+    balances = {item.account_id: item.balance for item in ledger.get_account_balances("family")}
+    assert balances[mandiri.id] == 99_975_000

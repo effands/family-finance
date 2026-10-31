@@ -53,6 +53,7 @@ class Database:
                     opening_balance_date TEXT NOT NULL,
                     is_active INTEGER NOT NULL DEFAULT 1,
                     notes TEXT NOT NULL DEFAULT '',
+                    creation_key TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -91,12 +92,22 @@ class Database:
                     account_id INTEGER NOT NULL REFERENCES financial_accounts(id),
                     PRIMARY KEY (chat_id, operation_kind)
                 );
+                CREATE TABLE IF NOT EXISTS legacy_ledger_links (
+                    transaction_id INTEGER PRIMARY KEY,
+                    chat_id TEXT NOT NULL,
+                    operation_id TEXT NOT NULL,
+                    linked_at TEXT NOT NULL
+                );
                 CREATE INDEX IF NOT EXISTS ix_tx_chat_date ON transactions(chat_id, transaction_date);
                 CREATE INDEX IF NOT EXISTS ix_tx_user_created ON transactions(user_id, created_at);
                 PRAGMA journal_mode=WAL;
             """)
             for x in default_categories():
                 c.execute("INSERT OR IGNORE INTO categories VALUES (?,?,?,?)", (x.name, ",".join(x.keywords), x.emoji, x.type))
+            columns = {row[1] for row in c.execute("PRAGMA table_info(financial_accounts)").fetchall()}
+            if "creation_key" not in columns:
+                c.execute("ALTER TABLE financial_accounts ADD COLUMN creation_key TEXT")
+            c.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_accounts_creation_key ON financial_accounts(chat_id, creation_key) WHERE creation_key IS NOT NULL")
 
     def add_transaction(self, x: Transaction) -> Transaction:
         with self._conn() as c:
@@ -119,7 +130,7 @@ class Database:
             is_active=bool(row["is_active"]), notes=row["notes"],
         )
 
-    def create_account(self, account: FinancialAccount) -> FinancialAccount:
+    def create_account(self, account: FinancialAccount, idempotency_key: str | None = None) -> FinancialAccount:
         if account.currency != "IDR":
             raise ValueError("Akun tahap pertama hanya mendukung IDR")
         if account.opening_balance < 0:
@@ -128,11 +139,15 @@ class Database:
             raise ValueError("Jenis akun tidak valid")
         now = datetime.now().isoformat()
         with self._conn() as c:
+            if idempotency_key:
+                existing = c.execute("SELECT * FROM financial_accounts WHERE chat_id=? AND creation_key=?", (account.chat_id, idempotency_key)).fetchone()
+                if existing:
+                    return self._account_from_row(existing)
             cur = c.execute(
                 """INSERT INTO financial_accounts
-                (chat_id,name,account_type,provider,holder_name,account_identifier,currency,opening_balance,opening_balance_date,is_active,notes,created_at,updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (account.chat_id, account.name.strip(), account.account_type, account.provider.strip(), account.holder_name.strip(), account.account_identifier.strip(), "IDR", account.opening_balance, account.opening_balance_date.isoformat(), int(account.is_active), account.notes.strip(), now, now),
+                (chat_id,name,account_type,provider,holder_name,account_identifier,currency,opening_balance,opening_balance_date,is_active,notes,creation_key,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (account.chat_id, account.name.strip(), account.account_type, account.provider.strip(), account.holder_name.strip(), account.account_identifier.strip(), "IDR", account.opening_balance, account.opening_balance_date.isoformat(), int(account.is_active), account.notes.strip(), idempotency_key, now, now),
             )
             return self._account_from_row(c.execute("SELECT * FROM financial_accounts WHERE id=?", (cur.lastrowid,)).fetchone())
 

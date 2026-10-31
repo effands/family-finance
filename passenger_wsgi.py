@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import time
+from uuid import uuid4
 from datetime import date, datetime, timedelta
 from http.cookies import SimpleCookie
 from urllib.parse import parse_qs, quote_plus, unquote_plus, urlencode
@@ -992,7 +993,7 @@ def _render_wealth_page(db: Database, chat_id: str, csrf_token: str, toast_html:
     ) or "<tr><td colspan='5'><div class='empty-state-box'>Belum ada mutasi wealth.</div></td></tr>"
     return f"""<main class='page-shell'>
       <header class='topbar'><a class='brand-lockup' href='/keuangan/dashboard'><div class='brand-mark'>FF</div><div class='brand-info'><span class='brand-badge'><span class='status-dot'></span>Wealth Center</span><h1 class='brand-title'>Total Kekayaan</h1><span class='brand-desc'>Saldo tercatat lintas bank, e-wallet, cash, dan investasi</span></div></a>
-      <div class='actions'><nav class='header-nav-menu'><a class='header-nav-link' href='/keuangan/dashboard'>{_svg_icon('layout-dashboard')} Dasbor</a><a class='header-nav-link active' href='/keuangan/wealth'>{_svg_icon('wallet')} Kekayaan</a><a class='header-nav-link' href='/keuangan/settings'>{_svg_icon('settings')} Pengaturan</a></nav><a class='btn btn-ghost' href='/logout'>{_svg_icon('logout')} Keluar</a></div></header>
+      <div class='actions'><nav class='header-nav-menu'><a class='header-nav-link' href='/keuangan/dashboard'>{_svg_icon('layout-dashboard')} Dasbor</a><a class='header-nav-link active' href='/keuangan/wealth'>{_svg_icon('wallet')} Kekayaan</a><a class='header-nav-link' href='/keuangan/settings'>{_svg_icon('settings')} Pengaturan</a></nav><a class='btn btn-secondary' href='/keuangan/wealth/export.csv'>Unduh CSV</a><a class='btn btn-ghost' href='/logout'>{_svg_icon('logout')} Keluar</a></div></header>
       {toast_html}
       <section class='metric-grid'>
         <article class='metric-card'><div class='metric-label'>Total Kekayaan</div><div class='metric-value val-balance'>{format_rupiah(summary.total_wealth)}</div><div class='metric-footer'><span>Semua akun aktif</span><span class='metric-tag tag-neutral'>IDR</span></div></article>
@@ -1090,7 +1091,8 @@ def _dashboard_response(environ, start_response):
             if not name:
                 raise WealthError("Nama akun wajib diisi")
             opening = parse_idr_amount(form.get("opening_balance", ["0"])[0]) if form.get("opening_balance", ["0"])[0].strip() else 0
-            db.create_account(FinancialAccount(None, chat_id, name, form.get("account_type", ["bank"])[0], form.get("provider", [""])[0], form.get("holder_name", [""])[0], form.get("account_identifier", [""])[0], "IDR", opening, opening_date))
+            creation_key = form.get("creation_key", [""])[0].strip() or hashlib.sha256((str(form) + str(environ.get("HTTP_COOKIE", ""))).encode()).hexdigest()
+            db.create_account(FinancialAccount(None, chat_id, name, form.get("account_type", ["bank"])[0], form.get("provider", [""])[0], form.get("holder_name", [""])[0], form.get("account_identifier", [""])[0], "IDR", opening, opening_date), idempotency_key=creation_key)
             start_response("303 See Other", [("Location", "/keuangan/wealth?toast=account_saved")])
         except (ValueError, WealthError) as exc:
             start_response("303 See Other", [("Location", f"/keuangan/wealth?toast=wealth_error&detail={quote_plus(str(exc)[:140])}")])
@@ -1174,6 +1176,36 @@ def _dashboard_response(environ, start_response):
         except (ValueError, WealthError) as exc:
             start_response("303 See Other", [("Location", f"/keuangan/wealth?toast=wealth_error&detail={quote_plus(str(exc)[:140])}")])
         return [b""]
+
+    if path.endswith("/wealth/legacy/attribute") and environ.get("REQUEST_METHOD") == "POST":
+        length = int(environ.get("CONTENT_LENGTH") or 0)
+        form = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "replace"))
+        if form.get("csrf_token", [""])[0] != _wealth_csrf(db):
+            start_response("403 Forbidden", [("Content-Type", "text/plain; charset=utf-8")])
+            return [b"CSRF token tidak valid"]
+        try:
+            WealthLedger(db).attribute_legacy_transaction(chat_id, int(form.get("transaction_id", ["0"])[0]), int(form.get("account_id", ["0"])[0]), "web", "Admin")
+            start_response("303 See Other", [("Location", "/keuangan/wealth?toast=legacy_linked")])
+        except (ValueError, WealthError) as exc:
+            start_response("303 See Other", [("Location", f"/keuangan/wealth?toast=wealth_error&detail={quote_plus(str(exc)[:140])}")])
+        return [b""]
+
+    if path.endswith("/wealth/export.csv") and environ.get("REQUEST_METHOD") == "GET":
+        ledger = WealthLedger(db)
+        summary = ledger.get_wealth_summary(chat_id)
+        stream = io.StringIO()
+        writer = csv.writer(stream)
+        writer.writerow(["Bagian", "Nama/Operasi", "Jenis", "Saldo/Nominal IDR", "Tanggal", "Catatan"])
+        writer.writerow(["Ringkasan", "Total Kekayaan", "total", summary.total_wealth, "", ""])
+        writer.writerow(["Ringkasan", "Aset Likuid", "liquid", summary.liquid_assets, "", ""])
+        writer.writerow(["Ringkasan", "Investasi", "investment", summary.investments, "", ""])
+        for account in ledger.get_account_balances(chat_id):
+            writer.writerow(["Akun", account.account_name, account.account_type, account.balance, "", ""])
+        for operation in ledger.list_operations(chat_id):
+            writer.writerow(["Ledger", operation["id"], operation["operation_type"], operation["debits"], operation["transaction_date"], operation["description"]])
+        payload = stream.getvalue().encode("utf-8-sig")
+        start_response("200 OK", [("Content-Type", "text/csv; charset=utf-8"), ("Content-Disposition", 'attachment; filename="wealth_center.csv"'), ("Content-Length", str(len(payload)))])
+        return [payload]
 
     # SETTINGS: Category Save (Create / Update)
     if path.endswith("/settings/category/save") and environ.get("REQUEST_METHOD") == "POST":
@@ -1589,6 +1621,8 @@ def _dashboard_response(environ, start_response):
             toast_html = '<div class="toast toast-success" id="main-toast"><div class="toast-title">Operasi Dibatalkan</div><div class="toast-msg">Reversal tercatat tanpa menghapus histori asli.</div></div>'
         elif toast_type == "default_saved":
             toast_html = '<div class="toast toast-success" id="main-toast"><div class="toast-title">Sumber Default Disimpan</div><div class="toast-msg">Input cepat Telegram sekarang memakai akun default tersebut.</div></div>'
+        elif toast_type == "legacy_linked":
+            toast_html = '<div class="toast toast-success" id="main-toast"><div class="toast-title">Transaksi Legacy Ditautkan</div><div class="toast-msg">Transaksi lama sekarang masuk ke ledger tanpa duplikasi.</div></div>'
         elif toast_type == "wealth_error":
             toast_html = f'<div class="toast toast-error" id="main-toast"><div class="toast-title">Mutasi Ditolak</div><div class="toast-msg">{html.escape(query.get("detail", ["Periksa data input."])[0])}</div></div>'
         body = _render_wealth_page(db, chat_id, _wealth_csrf(db), toast_html)
@@ -2438,6 +2472,8 @@ def application(environ, start_response):
         "/wealth/operation/create",
         "/wealth/operation/reverse",
         "/wealth/default/save",
+        "/wealth/legacy/attribute",
+        "/wealth/export.csv",
         "/wealth/reconcile",
         "/settings",
         "/settings/category/save",
