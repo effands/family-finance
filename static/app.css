@@ -1360,6 +1360,10 @@ a.brand-lockup:hover .brand-title {
    SETTINGS & CONFIGURATION MODULE STYLES
    ========================================================================== */
 
+.form-stack { display: flex; flex-direction: column; gap: 13px; }
+.form-stack .btn { align-self: flex-start; margin-top: 4px; }
+.wealth-account-type { text-transform: capitalize; color: var(--ink-secondary); }
+
 .header-nav-menu {
   display: inline-flex;
   align-items: center;

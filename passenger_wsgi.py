@@ -23,6 +23,8 @@ from src.database import Database
 from src.export_report import generate_excel, generate_pdf
 from src.formatting import format_date_id, format_rupiah, render_confirmation
 from src.models import Category, Transaction, TransactionFilters
+from src.models import FinancialAccount
+from src.wealth import WealthLedger, WealthError, InsufficientFundsError
 from src.parser import ParseError, parse_message
 from src.reports import build_expense_summary, build_income_summary, build_report
 
@@ -959,6 +961,50 @@ function confirmSystemUpdate(form) {{
     return body
 
 
+def _wealth_csrf(db: Database) -> str:
+    secret = _get_active_password(db) or "finance-family"
+    return hashlib.sha256((secret + ":wealth-ledger").encode("utf-8")).hexdigest()
+
+
+def _mask_identifier(value: str) -> str:
+    value = value or ""
+    if len(value) <= 4:
+        return "••••" if value else "—"
+    return "•••• " + value[-4:]
+
+
+def _render_wealth_page(db: Database, chat_id: str, csrf_token: str, toast_html: str = "") -> str:
+    ledger = WealthLedger(db)
+    summary = ledger.get_wealth_summary(chat_id)
+    balances = {x.account_id: x for x in ledger.get_account_balances(chat_id)}
+    accounts = db.list_accounts(chat_id, include_archived=True)
+    account_rows = "".join(
+        f"""<tr><td><strong>{html.escape(a.name)}</strong><div class='setting-help-text'>{html.escape(a.provider or a.account_type.title())}</div></td>
+        <td>{html.escape(a.account_type.title())}</td><td>{html.escape(_mask_identifier(a.account_identifier))}</td>
+        <td class='tx-amount'>{format_rupiah(balances[a.id].balance if a.id in balances else a.opening_balance)}</td>
+        <td>{'Aktif' if a.is_active else 'Diarsipkan'}</td></tr>"""
+        for a in accounts
+    ) or "<tr><td colspan='5'><div class='empty-state-box'><div class='empty-state-title'>Belum ada akun keuangan</div><div class='empty-state-desc'>Tambahkan rekening bank, e-wallet, cash, atau investasi untuk mulai menghitung total kekayaan.</div></div></td></tr>"
+    active_options = "".join(f"<option value='{a.id}'>{html.escape(a.name)} — {html.escape(a.provider)}</option>" for a in accounts if a.is_active)
+    return f"""<main class='page-shell'>
+      <header class='topbar'><a class='brand-lockup' href='/keuangan/dashboard'><div class='brand-mark'>FF</div><div class='brand-info'><span class='brand-badge'><span class='status-dot'></span>Wealth Center</span><h1 class='brand-title'>Total Kekayaan</h1><span class='brand-desc'>Saldo tercatat lintas bank, e-wallet, cash, dan investasi</span></div></a>
+      <div class='actions'><nav class='header-nav-menu'><a class='header-nav-link' href='/keuangan/dashboard'>{_svg_icon('layout-dashboard')} Dasbor</a><a class='header-nav-link active' href='/keuangan/wealth'>{_svg_icon('wallet')} Kekayaan</a><a class='header-nav-link' href='/keuangan/settings'>{_svg_icon('settings')} Pengaturan</a></nav><a class='btn btn-ghost' href='/logout'>{_svg_icon('logout')} Keluar</a></div></header>
+      {toast_html}
+      <section class='metric-grid'>
+        <article class='metric-card'><div class='metric-label'>Total Kekayaan</div><div class='metric-value val-balance'>{format_rupiah(summary.total_wealth)}</div><div class='metric-footer'><span>Semua akun aktif</span><span class='metric-tag tag-neutral'>IDR</span></div></article>
+        <article class='metric-card'><div class='metric-label'>Aset Likuid</div><div class='metric-value val-income'>{format_rupiah(summary.liquid_assets)}</div><div class='metric-footer'><span>Bank + e-wallet + cash</span></div></article>
+        <article class='metric-card'><div class='metric-label'>Investasi</div><div class='metric-value val-stats'>{format_rupiah(summary.investments)}</div><div class='metric-footer'><span>SBN, crypto, saham, aset</span></div></article>
+        <article class='metric-card'><div class='metric-label'>Cash di Tangan</div><div class='metric-value val-balance'>{format_rupiah(summary.cash)}</div><div class='metric-footer'><span>Belum dilaporkan penggunaannya</span></div></article>
+      </section>
+      <section class='panel settings-section-card'><div class='settings-section-header'><div><h2 class='settings-section-title'>Akun Keuangan</h2><p class='settings-section-desc'>Saldo dihitung dari saldo awal dan ledger. Transfer antar akun tidak menggandakan kekayaan.</p></div><a class='btn btn-primary' href='#akun-baru'>{_svg_icon('plus')} Tambah Akun</a></div>
+        <div class='table-responsive'><table class='data-table'><thead><tr><th>Nama Akun</th><th>Jenis</th><th>Identitas</th><th>Saldo Tercatat</th><th>Status</th></tr></thead><tbody>{account_rows}</tbody></table></div>
+      </section>
+      <section class='breakdown-grid'><div class='panel settings-section-card' id='akun-baru'><div class='settings-section-header'><div><h2 class='settings-section-title'>Tambah Akun</h2><p class='settings-section-desc'>Nomor rekening/ID hanya digunakan untuk identifikasi dan ditampilkan tersamarkan.</p></div></div>
+        <form method='post' action='/keuangan/wealth/account/save' class='form-stack'><input type='hidden' name='csrf_token' value='{csrf_token}'><div class='form-group'><label>Nama panggilan</label><input class='form-control' name='name' required placeholder='Mandiri Utama'></div><div class='form-group'><label>Jenis akun</label><select class='form-control' name='account_type'><option value='bank'>Bank</option><option value='ewallet'>E-wallet</option><option value='cash'>Cash</option><option value='investment'>Investasi</option></select></div><div class='form-group'><label>Bank / provider</label><input class='form-control' name='provider' placeholder='Bank Mandiri / DANA / SBN'></div><div class='form-group'><label>Nama pemilik</label><input class='form-control' name='holder_name' placeholder='Keluarga'></div><div class='form-group'><label>Nomor rekening / ID / nomor HP</label><input class='form-control' name='account_identifier'></div><div class='form-group'><label>Saldo awal (IDR)</label><input class='form-control' name='opening_balance' inputmode='numeric' required value='0'></div><div class='form-group'><label>Tanggal saldo awal</label><input class='form-control' type='date' name='opening_balance_date' required value='{date.today().isoformat()}'></div><button class='btn btn-primary' type='submit'>Simpan Akun</button></form>
+      </div><div class='panel settings-section-card'><div class='settings-section-header'><div><h2 class='settings-section-title'>Catat Mutasi</h2><p class='settings-section-desc'>Pilih sumber dana untuk pengeluaran, transfer, dan tarik ATM.</p></div></div><form method='post' action='/keuangan/wealth/operation/create' class='form-stack'><input type='hidden' name='csrf_token' value='{csrf_token}'><div class='form-group'><label>Jenis</label><select class='form-control' name='operation_type'><option value='expense'>Pengeluaran</option><option value='cash_withdrawal'>Tarik tunai ATM</option><option value='transfer'>Transfer antar akun</option></select></div><div class='form-group'><label>Dari akun</label><select class='form-control' name='source_account_id' required>{active_options}</select></div><div class='form-group'><label>Ke akun (untuk transfer/ATM)</label><select class='form-control' name='destination_account_id'><option value=''>— pilih bila diperlukan —</option>{active_options}</select></div><div class='form-group'><label>Nominal (IDR)</label><input class='form-control' name='amount' inputmode='numeric' required></div><div class='form-group'><label>Keterangan</label><input class='form-control' name='description' required placeholder='Belanja / tarik tunai / transfer'></div><button class='btn btn-primary' type='submit'>Catat Mutasi</button></form></div></section>
+      {CREDIT_HTML}</main>"""
+
+
 def _dashboard_response(environ, start_response):
     path = environ.get("PATH_INFO", "")
 
@@ -1023,6 +1069,51 @@ def _dashboard_response(environ, start_response):
 
     # Parse Queries & Body
     query = parse_qs(environ.get("QUERY_STRING", ""))
+
+    # WEALTH: account and double-entry ledger operations
+    if path.endswith("/wealth/account/save") and environ.get("REQUEST_METHOD") == "POST":
+        length = int(environ.get("CONTENT_LENGTH") or 0)
+        form = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "replace"))
+        if form.get("csrf_token", [""])[0] != _wealth_csrf(db):
+            start_response("403 Forbidden", [("Content-Type", "text/plain; charset=utf-8")])
+            return [b"CSRF token tidak valid"]
+        def money(value):
+            raw = value.replace(".", "").replace(",", "").replace("Rp", "").strip()
+            return int(raw) if raw.isdigit() else 0
+        try:
+            opening_date = date.fromisoformat(form.get("opening_balance_date", [date.today().isoformat()])[0])
+            db.create_account(FinancialAccount(None, chat_id, form.get("name", [""])[0].strip(), form.get("account_type", ["bank"])[0], form.get("provider", [""])[0], form.get("holder_name", [""])[0], form.get("account_identifier", [""])[0], "IDR", money(form.get("opening_balance", ["0"])[0]), opening_date))
+            start_response("303 See Other", [("Location", "/keuangan/wealth?toast=account_saved")])
+        except (ValueError, WealthError) as exc:
+            start_response("303 See Other", [("Location", f"/keuangan/wealth?toast=wealth_error&detail={quote_plus(str(exc)[:140])}")])
+        return [b""]
+
+    if path.endswith("/wealth/operation/create") and environ.get("REQUEST_METHOD") == "POST":
+        length = int(environ.get("CONTENT_LENGTH") or 0)
+        form = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "replace"))
+        if form.get("csrf_token", [""])[0] != _wealth_csrf(db):
+            start_response("403 Forbidden", [("Content-Type", "text/plain; charset=utf-8")])
+            return [b"CSRF token tidak valid"]
+        try:
+            amount_raw = form.get("amount", ["0"])[0].replace(".", "").replace(",", "").replace("Rp", "").strip()
+            amount = int(amount_raw) if amount_raw.isdigit() else 0
+            kind = form.get("operation_type", ["expense"])[0]
+            source = int(form.get("source_account_id", ["0"])[0])
+            destination_raw = form.get("destination_account_id", [""])[0]
+            destination = int(destination_raw) if destination_raw.isdigit() else None
+            description = form.get("description", ["Mutasi manual"])[0].strip()
+            ledger = WealthLedger(db)
+            actor = "web"
+            if kind == "expense":
+                ledger.create_expense(chat_id, source, amount, description, "Lain-lain", date.today(), actor, "Admin", idempotency_key=hashlib.sha256((str(form) + str(environ.get("HTTP_COOKIE", ""))).encode()).hexdigest())
+            else:
+                if not destination:
+                    raise WealthError("Akun tujuan wajib dipilih")
+                ledger.create_transfer(chat_id, source, destination, amount, description, date.today(), actor, "Admin", operation_type=kind, idempotency_key=hashlib.sha256((str(form) + str(environ.get("HTTP_COOKIE", ""))).encode()).hexdigest())
+            start_response("303 See Other", [("Location", "/keuangan/wealth?toast=operation_saved")])
+        except (ValueError, WealthError, InsufficientFundsError) as exc:
+            start_response("303 See Other", [("Location", f"/keuangan/wealth?toast=wealth_error&detail={quote_plus(str(exc)[:140])}")])
+        return [b""]
 
     # SETTINGS: Category Save (Create / Update)
     if path.endswith("/settings/category/save") and environ.get("REQUEST_METHOD") == "POST":
@@ -1424,6 +1515,19 @@ def _dashboard_response(environ, start_response):
         toast_html = '<div class="toast toast-error" id="main-toast"><div class="toast-title">Kontrol Bot Gagal</div><div class="toast-msg">Proses bot belum berhasil dikendalikan. Buka tab Info Sistem untuk melihat statusnya.</div><button class="toast-close" onclick="dismissToast(\'main-toast\')">&times;</button></div>'
 
     # ROUTE: SETTINGS PAGE
+    if path.endswith("/wealth"):
+        toast_type = query.get("toast", [""])[0]
+        if toast_type == "account_saved":
+            toast_html = '<div class="toast toast-success" id="main-toast"><div class="toast-title">Akun Berhasil Disimpan</div><div class="toast-msg">Saldo awal dan identitas akun telah masuk ke Wealth Center.</div></div>'
+        elif toast_type == "operation_saved":
+            toast_html = '<div class="toast toast-success" id="main-toast"><div class="toast-title">Mutasi Berhasil Dicatat</div><div class="toast-msg">Saldo akun dan total kekayaan telah diperbarui.</div></div>'
+        elif toast_type == "wealth_error":
+            toast_html = f'<div class="toast toast-error" id="main-toast"><div class="toast-title">Mutasi Ditolak</div><div class="toast-msg">{html.escape(query.get("detail", ["Periksa data input."])[0])}</div></div>'
+        body = _render_wealth_page(db, chat_id, _wealth_csrf(db), toast_html)
+        status, headers, payload = _html_page("Total Kekayaan — Finance Family", body)
+        start_response(status, headers)
+        return payload
+
     if path.endswith("/settings"):
         active_tab = query.get("tab", ["categories"])[0]
         if active_tab not in ("categories", "gemini", "security", "system"):
