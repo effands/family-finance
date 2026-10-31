@@ -1162,8 +1162,9 @@ def _dashboard_response(environ, start_response):
                 pending_file.write(body)
             csrf = _wealth_csrf(db)
             body_html = f"<main class='page-shell'><section class='panel settings-section-card'><h1>Preview Import Backup</h1><p>Format: {html.escape(preview.format)} · Chat: {html.escape(preview.chat_id)}</p><pre>{html.escape(json.dumps(preview.counts, indent=2))}</pre><p>Merge tidak menggandakan record. Replace akan mengganti data keluarga setelah safety backup.</p><form method='post' action='/keuangan/backup/restore' class='actions'><input type='hidden' name='csrf_token' value='{csrf}'><input type='hidden' name='token' value='{token}'><button class='btn btn-primary' name='mode' value='merge'>Pulihkan Merge</button><button class='btn btn-danger' name='mode' value='replace' onclick=\"return confirm('Buat safety backup dan ganti data?')\">Pulihkan Replace</button><a class='btn btn-ghost' href='/keuangan/backup'>Batal</a></form></section></main>"
-            start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
-            return _html_page("Preview Backup", body_html)
+            status, headers, payload = _html_page("Preview Backup", body_html)
+            start_response(status, headers)
+            return payload
         except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
             start_response("400 Bad Request", [("Content-Type", "text/plain; charset=utf-8")])
             return [f"Backup ditolak: {exc}".encode("utf-8")]
@@ -1191,8 +1192,9 @@ def _dashboard_response(environ, start_response):
 
     if path.endswith("/backup") and environ.get("REQUEST_METHOD") == "GET":
         body = _render_backup_page(db, chat_id, _wealth_csrf(db), query.get("toast", [""])[0])
-        start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
-        return _html_page("Backup & Laporan", body)
+        status, headers, payload = _html_page("Backup & Laporan", body)
+        start_response(status, headers)
+        return payload
 
     if path.endswith("/reports") and environ.get("REQUEST_METHOD") == "GET":
         report_type = query.get("type", ["cashflow"])[0]
