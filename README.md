@@ -110,6 +110,9 @@ bayar wifi indihome 385.000
 | `/edit <ID> deskripsi <teks>` | Memperbarui deskripsi transaksi |
 | `/edit <ID> kategori <nama>` | Mengubah pos kategori transaksi |
 | `/kategori` | Menampilkan seluruh kategori mutasi |
+| `/akun` | Menampilkan saldo akun bank, e-wallet, cash, dan investasi |
+| `/saldoaset` | Menampilkan total kekayaan, aset likuid, investasi, dan cash |
+| `/transfer <dari_id> <ke_id> <nominal> <keterangan>` | Mencatat transfer antar akun secara berpasangan |
 | `/tambahkategori <nama>` | Menambahkan pos kategori baru |
 | `/hapuskategori <nama>` | Menghapus pos kategori (transaksi dialihkan ke *Lain-lain*) |
 
@@ -121,6 +124,18 @@ Akses Dasbor Web di `/keuangan/dashboard`:
 - **Ekspor Excel:** Klik tombol `Ekspor Excel` atau akses `/keuangan/export.xlsx` untuk mengunduh berkas `.xlsx`.
 - **Ekspor PDF:** Klik tombol `Ekspor PDF` atau akses `/keuangan/export.pdf` untuk mengunduh dokumen laporan keuangan resmi.
 - **Pengaturan:** Klik tombol `Pengaturan` atau akses `/keuangan/settings` untuk mengelola kategori, API Key Gemini, dan kata sandi.
+
+### 💎 Wealth Center — Total Kekayaan
+
+Akses `/keuangan/wealth` untuk mencatat rekening bank, DANA/GoPay/ShopeePay, cash di tangan, dan aset investasi manual.
+
+- Saldo awal memakai tanggal efektif agar histori tidak salah.
+- Transfer/ATM memindahkan saldo dari sumber ke tujuan dan tidak dihitung sebagai pemasukan baru. Tarik ATM memakai tujuan `Cash`.
+- Pengeluaran selalu mengurangi akun sumber; cash baru berkurang saat penggunaannya dilaporkan.
+- Pembelian investasi dicatat sebagai transfer rekening → akun investasi.
+- Rekonsiliasi dicatat sebagai adjustment yang dapat diaudit, bukan edit saldo dasar.
+
+Wealth Center hanya memakai ledger baru. Transaksi legacy tetap tersedia di laporan lama dan tidak otomatis digandakan ke total kekayaan.
 
 ---
 

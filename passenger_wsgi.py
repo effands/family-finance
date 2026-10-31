@@ -1621,6 +1621,7 @@ def _dashboard_response(environ, start_response):
     <div class="actions">
       <nav class="header-nav-menu">
         <a class="header-nav-link active" href="/keuangan/dashboard">{_svg_icon("layout-dashboard")} Dasbor</a>
+        <a class="header-nav-link" href="/keuangan/wealth">{_svg_icon("wallet")} Kekayaan</a>
         <a class="header-nav-link" href="/keuangan/settings">{_svg_icon("settings")} Pengaturan</a>
       </nav>
       <a class="btn btn-primary" href="/keuangan/export.pdf?{export_q}">{_svg_icon("file-pdf")} Unduh PDF</a>
@@ -1852,6 +1853,9 @@ def _dashboard_response(environ, start_response):
       <nav class="header-nav-menu">
         <a class="header-nav-link active" href="/keuangan/dashboard">
           {_svg_icon("layout-dashboard")} Dasbor
+        </a>
+        <a class="header-nav-link" href="/keuangan/wealth">
+          {_svg_icon("wallet")} Kekayaan
         </a>
         <a class="header-nav-link" href="/keuangan/settings">
           {_svg_icon("settings")} Pengaturan
@@ -2360,6 +2364,9 @@ def application(environ, start_response):
     path = environ.get("PATH_INFO", "")
     valid_subpaths = (
         "/dashboard",
+        "/wealth",
+        "/wealth/account/save",
+        "/wealth/operation/create",
         "/settings",
         "/settings/category/save",
         "/settings/category/delete",

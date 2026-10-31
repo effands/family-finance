@@ -6,7 +6,7 @@ from datetime import date
 from google import genai
 from google.genai import types
 
-GEMINI_TIMEOUT_MS = 45_000
+GEMINI_TIMEOUT_MS = 120_000
 
 PROMPT = """Baca struk belanja ini. Balas HANYA JSON valid tanpa markdown:
 {"amount": integer rupiah, "description": string, "date": "YYYY-MM-DD" or null, "category": string}

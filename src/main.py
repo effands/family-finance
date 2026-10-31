@@ -25,6 +25,7 @@ from .parser import ParseError, parse_message
 from .rate_limit import RateLimiter
 from .receipt_ai import GeminiKeyPool, extract_receipt, transcribe_audio
 from .reports import build_expense_summary, build_income_summary, build_report
+from .wealth import WealthLedger, WealthError, InsufficientFundsError
 
 MENU_KEYBOARD = ReplyKeyboardMarkup(
     [
@@ -315,6 +316,54 @@ async def categories_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+async def accounts_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    s = context.application.bot_data["settings"]
+    if not allowed(update, s):
+        return
+    db = context.application.bot_data["db"]
+    accounts = db.list_accounts(str(update.effective_chat.id))
+    if not accounts:
+        return await update.message.reply_text("🏦 Belum ada akun keuangan. Tambahkan rekening/e-wallet/cash melalui menu Kekayaan di dasbor web.")
+    ledger = WealthLedger(db)
+    balances = {x.account_id: x for x in ledger.get_account_balances(str(update.effective_chat.id))}
+    lines = ["🏦 *AKUN KEUANGAN AKTIF*", "━━━━━━━━━━━━━━━━━━━━━━"]
+    for account in accounts:
+        balance = balances[account.id].balance
+        ident = ("•••• " + account.account_identifier[-4:]) if len(account.account_identifier) > 4 else "—"
+        lines.append(f"• *{account.name}* — {account.provider or account.account_type}\n  {ident} · {format_rupiah(balance)}")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+async def wealth_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    s = context.application.bot_data["settings"]
+    if not allowed(update, s):
+        return
+    summary = WealthLedger(context.application.bot_data["db"]).get_wealth_summary(str(update.effective_chat.id))
+    text = ("💎 *TOTAL KEKAYAAN KELUARGA*\n━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"• Total aset: *{format_rupiah(summary.total_wealth)}*\n"
+            f"• Aset likuid: *{format_rupiah(summary.liquid_assets)}*\n"
+            f"• Investasi: *{format_rupiah(summary.investments)}*\n"
+            f"• Cash di tangan: *{format_rupiah(summary.cash)}*\n━━━━━━━━━━━━━━━━━━━━━━\n"
+            "Saldo dihitung dari ledger akun; transfer internal tidak dihitung sebagai pemasukan.")
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+
+async def transfer_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    s = context.application.bot_data["settings"]
+    if not allowed(update, s):
+        return
+    if len(context.args) < 4:
+        return await update.message.reply_text("Format: `/transfer <dari_id> <ke_id> <nominal> <keterangan>`\nGunakan `/akun` untuk melihat akun aktif.", parse_mode="Markdown")
+    try:
+        source_id, destination_id = int(context.args[0]), int(context.args[1])
+        amount = int(context.args[2].replace(".", "").replace(",", "").replace("Rp", ""))
+        description = " ".join(context.args[3:])
+        WealthLedger(context.application.bot_data["db"]).create_transfer(str(update.effective_chat.id), source_id, destination_id, amount, description, datetime.now().date(), str(update.effective_user.id), update.effective_user.username or update.effective_user.first_name or "user", idempotency_key=f"tg:{update.update_id}")
+        await update.message.reply_text(f"✅ Transfer {format_rupiah(amount)} berhasil dicatat. Gunakan `/saldoaset` untuk melihat saldo terbaru.", parse_mode="Markdown")
+    except (ValueError, WealthError, InsufficientFundsError) as exc:
+        await update.message.reply_text(f"❌ Transfer ditolak: {exc}")
+
+
 async def add_category_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     s = context.application.bot_data["settings"]
     if not allowed(update, s):
@@ -527,6 +576,9 @@ def build_app():
             ("minggu", "Laporan minggu ini"),
             ("bulan", "Laporan bulan ini"),
             ("kategori", "Daftar kategori"),
+            ("akun", "Daftar akun bank dan e-wallet"),
+            ("saldoaset", "Total kekayaan dan saldo aset"),
+            ("transfer", "Transfer antar akun"),
             ("undo", "Batalkan catatan terakhir"),
             ("bantuan", "Panduan penggunaan bot"),
         ])
@@ -543,6 +595,9 @@ def build_app():
     app.add_handler(CommandHandler("hapus", delete_cmd))
     app.add_handler(CommandHandler("edit", edit_cmd))
     app.add_handler(CommandHandler("kategori", categories_cmd))
+    app.add_handler(CommandHandler("akun", accounts_cmd))
+    app.add_handler(CommandHandler("saldoaset", wealth_cmd))
+    app.add_handler(CommandHandler("transfer", transfer_cmd))
     app.add_handler(CommandHandler("tambahkategori", add_category_cmd))
     app.add_handler(CommandHandler("hapuskategori", remove_category_cmd))
 
