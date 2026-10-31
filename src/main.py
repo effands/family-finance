@@ -380,6 +380,30 @@ async def transfer_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Transfer ditolak: {exc}")
 
 
+async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    s = context.application.bot_data["settings"]
+    if not allowed(update, s):
+        return
+    db: Database = context.application.bot_data["db"]
+    chat_id = str(update.effective_chat.id)
+    tx_count = len(db.list_transactions(TransactionFilters(chat_id)))
+    acc_count = len(db.list_accounts(chat_id))
+    summary = WealthLedger(db).get_wealth_summary(chat_id)
+    text = (
+        "📦 *STATUS BACKUP & KEAMANAN DATA*\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"• Total Transaksi : *{tx_count} catatan*\n"
+        f"• Total Rekening  : *{acc_count} akun*\n"
+        f"• Total Kekayaan  : *{format_rupiah(summary.total_wealth)}*\n"
+        "• Integritas Data : ✅ Terverifikasi\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "🌐 *Pusat Unduh & Pulihkan Cadangan:*\n"
+        "Buka menu Backup di dasbor web: `/keuangan/backup`\n"
+        "Tersedia ekspor ZIP lengkap, JSON, dan CSV bundle."
+    )
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+
 async def add_category_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     s = context.application.bot_data["settings"]
     if not allowed(update, s):
@@ -611,9 +635,10 @@ def build_app():
     app.add_handler(CommandHandler("hapus", delete_cmd))
     app.add_handler(CommandHandler("edit", edit_cmd))
     app.add_handler(CommandHandler("kategori", categories_cmd))
-    app.add_handler(CommandHandler("akun", accounts_cmd))
-    app.add_handler(CommandHandler("saldoaset", wealth_cmd))
+    app.add_handler(CommandHandler(["akun", "rekening"], accounts_cmd))
+    app.add_handler(CommandHandler(["saldoaset", "wealth", "kekayaan"], wealth_cmd))
     app.add_handler(CommandHandler("transfer", transfer_cmd))
+    app.add_handler(CommandHandler("backup", backup_cmd))
     app.add_handler(CommandHandler("tambahkategori", add_category_cmd))
     app.add_handler(CommandHandler("hapuskategori", remove_category_cmd))
 

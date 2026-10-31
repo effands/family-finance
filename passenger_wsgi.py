@@ -53,6 +53,10 @@ Kirim pesan teks transaksi atau unggah foto struk belanja untuk pencatatan otoma
 • `/pengeluaran` — Rincian belanja per pos kategori
 • `/hari`, `/minggu`, `/bulan`, `/tahun`, `/semua` — Laporan berkala
 • `/kategori` — Daftar kategori & kata kunci aktif
+• `/akun` atau `/rekening` — Cek daftar rekening & saldo tersimpan
+• `/wealth` atau `/kekayaan` atau `/saldoaset` — Ringkasan portofolio aset
+• `/transfer <dari_id> <ke_id> <nominal> <ket>` — Pindah dana antar akun
+• `/backup` — Ringkasan status backup data & tautan unduh cepat
 
 🛠️ *Perintah Koreksi Transaksi (CRUD):*
 • `/undo` — Batalkan catatan terakhir Anda
@@ -601,9 +605,16 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
             Kelola klasifikasi pos pengeluaran dan pemasukan. Kata kunci digunakan oleh parser otomatis untuk mengkategorikan transaksi teks dari pesan Telegram.
           </p>
         </div>
-        <button class="btn btn-primary" type="button" onclick="openNewCategoryModal()">
-          {_svg_icon("plus")} Tambah Kategori Baru
-        </button>
+        <div class="actions">
+          <form method="post" action="/keuangan/settings/category/sync_defaults" style="display:inline;">
+            <button class="btn btn-secondary" type="submit" title="Muat seluruh kategori standar sehari-hari yang belum ada">
+              {_svg_icon("sparkles")} Muat Kategori Standar
+            </button>
+          </form>
+          <button class="btn btn-primary" type="button" onclick="openNewCategoryModal()">
+            {_svg_icon("plus")} Tambah Kategori Baru
+          </button>
+        </div>
       </div>
 
       <div class="table-responsive">
@@ -990,17 +1001,155 @@ def _render_backup_page(db: Database, chat_id: str, csrf_token: str, toast: str 
     backup_dir = os.path.join(os.path.dirname(db.path), "backups")
     os.makedirs(backup_dir, exist_ok=True)
     files = []
-    for name in sorted(os.listdir(backup_dir), reverse=True)[:10]:
+    for name in sorted(os.listdir(backup_dir), reverse=True)[:15]:
         full = os.path.join(backup_dir, name)
         if os.path.isfile(full):
-            files.append(f"<tr><td>{html.escape(name)}</td><td>{os.path.getsize(full):,} byte</td><td>{datetime.fromtimestamp(os.path.getmtime(full)).strftime('%Y-%m-%d %H:%M')}</td></tr>")
-    file_rows = "".join(files) or "<tr><td colspan='3'>Belum ada backup lokal.</td></tr>"
-    return f"""<main class='page-shell'><header class='topbar'><a class='brand-lockup' href='/keuangan/dashboard'><div class='brand-mark'>FF</div><div class='brand-info'><span class='brand-badge'><span class='status-dot'></span>Backup Center</span><h1 class='brand-title'>Backup & Laporan</h1><span class='brand-desc'>Cadangkan, pulihkan, cetak, dan audit pembukuan dengan aman</span></div></a><div class='actions'><nav class='header-nav-menu'><a class='header-nav-link' href='/keuangan/dashboard'>Dasbor</a><a class='header-nav-link' href='/keuangan/wealth'>Kekayaan</a><a class='header-nav-link active' href='/keuangan/backup'>Backup</a><a class='header-nav-link' href='/keuangan/settings'>Pengaturan</a></nav><a class='btn btn-ghost' href='/logout'>Keluar</a></div></header>
-    {('<div class="toast toast-success">'+html.escape(toast)+'</div>') if toast else ''}
-    <section class='metric-grid'><article class='metric-card'><div class='metric-label'>Backup Lengkap</div><div class='metric-value val-balance'>ZIP</div><div class='metric-footer'><span>JSON + CSV + checksum</span></div></article><article class='metric-card'><div class='metric-label'>Laporan Profesional</div><div class='metric-value val-income'>4</div><div class='metric-footer'><span>Jurnal, arus kas, kekayaan, rekonsiliasi</span></div></article></section>
-    <section class='breakdown-grid'><div class='panel settings-section-card'><h2 class='settings-section-title'>Ekspor Backup</h2><p class='settings-section-desc'>ZIP adalah format pemulihan utama. JSON untuk integrasi, CSV bundle untuk audit.</p><div class='actions'><a class='btn btn-primary' href='/keuangan/backup/export?format=zip'>Unduh ZIP Lengkap</a><a class='btn btn-secondary' href='/keuangan/backup/export?format=json'>Unduh JSON</a><a class='btn btn-ghost' href='/keuangan/backup/export?format=csv'>Unduh CSV Bundle</a></div></div><div class='panel settings-section-card'><h2 class='settings-section-title'>Impor / Pulihkan</h2><p class='settings-section-desc'>File divalidasi lebih dulu. Merge aman untuk backup berulang; Replace membuat safety backup otomatis.</p><form method='post' action='/keuangan/backup/preview' enctype='multipart/form-data' class='form-stack'><input type='hidden' name='csrf_token' value='{csrf_token}'><input class='form-control' type='file' name='file' accept='.zip,.json' required><select class='form-control' name='mode'><option value='merge'>Preview Merge</option><option value='replace'>Preview Replace</option></select><button class='btn btn-secondary' type='submit'>Validasi & Preview</button></form></div></section>
-    <section class='panel settings-section-card'><div class='settings-section-header'><div><h2 class='settings-section-title'>Laporan Pembukuan</h2><p class='settings-section-desc'>Buka laporan siap cetak; gunakan Print dari browser untuk PDF fisik.</p></div></div><div class='actions'><a class='btn btn-primary' href='/keuangan/reports?type=journal'>Jurnal Transaksi</a><a class='btn btn-secondary' href='/keuangan/reports?type=cashflow'>Rekap Arus Kas</a><a class='btn btn-secondary' href='/keuangan/reports?type=wealth'>Posisi Kekayaan</a><a class='btn btn-ghost' href='/keuangan/reports?type=reconciliation'>Rekonsiliasi</a></div></section>
-    <section class='panel settings-section-card'><h2 class='settings-section-title'>Backup Lokal</h2><p class='settings-section-desc'>Backup lokal disimpan di folder privat dan tidak dapat diakses sebagai file publik.</p><div class='table-responsive'><table class='data-table'><thead><tr><th>Nama</th><th>Ukuran</th><th>Waktu</th></tr></thead><tbody>{file_rows}</tbody></table></div></section></main>"""
+            sz = os.path.getsize(full)
+            sz_str = f"{sz / 1024:.1f} KB" if sz > 1024 else f"{sz} B"
+            mtime_str = datetime.fromtimestamp(os.path.getmtime(full)).strftime('%d %b %Y %H:%M')
+            safe_name = html.escape(name)
+            files.append(
+                f"<tr>"
+                f"<td style='font-weight: 600; color: var(--ink-primary);'>{safe_name}</td>"
+                f"<td class='tabular-nums' style='color: var(--ink-secondary);'>{sz_str}</td>"
+                f"<td class='tabular-nums' style='color: var(--ink-muted);'>{mtime_str}</td>"
+                f"<td style='text-align: right;'><a class='btn btn-ghost btn-sm' href='/keuangan/backup/download?file={quote_plus(name)}' title='Unduh snapshot'>{_svg_icon('download')} Unduh</a></td>"
+                f"</tr>"
+            )
+    file_rows = "".join(files) or "<tr><td colspan='4' style='text-align:center; padding: 28px; color: var(--ink-muted);'>Belum ada backup lokal di vault server.</td></tr>"
+
+    tx_count = len(db.list_transactions(TransactionFilters(chat_id)))
+    acc_count = len(db.list_accounts(chat_id))
+
+    return f"""<main class='page-shell'>
+      <header class='topbar'>
+        <a class='brand-lockup' href='/keuangan/dashboard'>
+          <div class='brand-mark'>FF</div>
+          <div class='brand-info'>
+            <span class='brand-badge'><span class='status-dot'></span>Pusat Keamanan & Arsip</span>
+            <h1 class='brand-title'>Backup & Laporan</h1>
+            <span class='brand-desc'>Cadangkan, pulihkan, cetak, dan audit pembukuan dengan aman</span>
+          </div>
+        </a>
+        <div class='actions'>
+          <nav class='header-nav-menu'>
+            <a class='header-nav-link' href='/keuangan/dashboard'>{_svg_icon('layout-dashboard')} Dasbor</a>
+            <a class='header-nav-link' href='/keuangan/wealth'>{_svg_icon('wallet')} Kekayaan</a>
+            <a class='header-nav-link active' href='/keuangan/backup'>{_svg_icon('archive')} Backup</a>
+            <a class='header-nav-link' href='/keuangan/settings'>{_svg_icon('settings')} Pengaturan</a>
+          </nav>
+          <a class='btn btn-ghost' href='/logout'>{_svg_icon('logout')} Keluar</a>
+        </div>
+      </header>
+
+      {('<div class="toast toast-success" style="margin-bottom: 20px;">' + html.escape(toast) + '</div>') if toast else ''}
+
+      <section class='metric-grid'>
+        <article class='metric-card'>
+          <div class='metric-label'>Backup Lengkap</div>
+          <div class='metric-value val-balance'>ZIP</div>
+          <div class='metric-footer'><span>JSON + CSV + checksum sha256</span></div>
+        </article>
+        <article class='metric-card'>
+          <div class='metric-label'>Laporan Profesional</div>
+          <div class='metric-value val-income'>4</div>
+          <div class='metric-footer'><span>Jurnal, arus kas, kekayaan, rekonsiliasi</span></div>
+        </article>
+        <article class='metric-card'>
+          <div class='metric-label'>Basis Data Aktif</div>
+          <div class='metric-value val-stats tabular-nums'>{tx_count}</div>
+          <div class='metric-footer'><span>{acc_count} akun terdaftar</span></div>
+        </article>
+        <article class='metric-card'>
+          <div class='metric-label'>Integritas Sistem</div>
+          <div class='metric-value val-balance' style='font-size: 24px; color: var(--income-main);'>ACID</div>
+          <div class='metric-footer'><span>SQLite WAL Mode Aman</span></div>
+        </article>
+      </section>
+
+      <section class='breakdown-grid'>
+        <div class='panel settings-section-card'>
+          <div class='settings-section-header'>
+            <div>
+              <h2 class='settings-section-title'>Ekspor Backup</h2>
+              <p class='settings-section-desc'>ZIP adalah format pemulihan utama. JSON untuk integrasi, CSV bundle untuk audit.</p>
+            </div>
+          </div>
+          <div class='actions' style='flex-wrap: wrap; gap: 10px; margin-bottom: 18px;'>
+            <a class='btn btn-primary' href='/keuangan/backup/export?format=zip'>{_svg_icon('download')} Unduh ZIP Lengkap</a>
+            <a class='btn btn-secondary' href='/keuangan/backup/export?format=json'>Unduh JSON</a>
+            <a class='btn btn-ghost' href='/keuangan/backup/export?format=csv'>Unduh CSV Bundle</a>
+          </div>
+          <form method='post' action='/keuangan/backup/create_snapshot' style='border-top: 1px solid var(--border-subtle); padding-top: 14px;'>
+            <button class='btn btn-secondary btn-sm' type='submit' title='Simpan snapshot instan langsung di server'>
+              {_svg_icon('save')} 💾 Buat Snapshot Lokal Sekarang
+            </button>
+          </form>
+        </div>
+
+        <div class='panel settings-section-card'>
+          <div class='settings-section-header'>
+            <div>
+              <h2 class='settings-section-title'>Impor / Pulihkan</h2>
+              <p class='settings-section-desc'>File divalidasi lebih dulu. Merge aman untuk backup berulang; Replace membuat safety backup otomatis.</p>
+            </div>
+          </div>
+          <form method='post' action='/keuangan/backup/preview' enctype='multipart/form-data' class='form-stack'>
+            <input type='hidden' name='csrf_token' value='{csrf_token}'>
+            <div class='form-group'>
+              <label style='font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--ink-muted);'>File Cadangan (.zip / .json)</label>
+              <input class='form-control' type='file' name='file' accept='.zip,.json' required>
+            </div>
+            <div class='form-group'>
+              <label style='font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--ink-muted);'>Metode Pemulihan</label>
+              <select class='form-control' name='mode'>
+                <option value='merge'>Preview Merge</option>
+                <option value='replace'>Preview Replace</option>
+              </select>
+            </div>
+            <button class='btn btn-primary' type='submit'>{_svg_icon('sparkles')} Validasi & Preview</button>
+          </form>
+        </div>
+      </section>
+
+      <section class='panel settings-section-card'>
+        <div class='settings-section-header'>
+          <div>
+            <h2 class='settings-section-title'>Laporan Pembukuan</h2>
+            <p class='settings-section-desc'>Buka laporan siap cetak; gunakan Print dari browser untuk PDF fisik.</p>
+          </div>
+        </div>
+        <div class='actions' style='flex-wrap: wrap; gap: 10px;'>
+          <a class='btn btn-primary' href='/keuangan/reports?type=journal'>{_svg_icon('file-text')} Jurnal Transaksi</a>
+          <a class='btn btn-secondary' href='/keuangan/reports?type=cashflow'>{_svg_icon('trending-up')} Rekap Arus Kas</a>
+          <a class='btn btn-secondary' href='/keuangan/reports?type=wealth'>{_svg_icon('wallet')} Posisi Kekayaan</a>
+          <a class='btn btn-ghost' href='/keuangan/reports?type=reconciliation'>{_svg_icon('check')} Rekonsiliasi</a>
+        </div>
+      </section>
+
+      <section class='panel settings-section-card'>
+        <div class='settings-section-header'>
+          <div>
+            <h2 class='settings-section-title'>Backup Lokal</h2>
+            <p class='settings-section-desc'>Backup lokal disimpan di folder privat dan tidak dapat diakses sebagai file publik.</p>
+          </div>
+        </div>
+        <div class='table-responsive'>
+          <table class='data-table'>
+            <thead>
+              <tr>
+                <th>Nama File</th>
+                <th>Ukuran</th>
+                <th>Waktu Pembuatan</th>
+                <th style='text-align: right;'>Aksi</th>
+              </tr>
+            </thead>
+            <tbody>{file_rows}</tbody>
+          </table>
+        </div>
+      </section>
+      {CREDIT_HTML}
+    </main>"""
 
 
 def _mask_identifier(value: str) -> str:
@@ -1015,6 +1164,32 @@ def _render_wealth_page(db: Database, chat_id: str, csrf_token: str, toast_html:
     summary = ledger.get_wealth_summary(chat_id)
     balances = {x.account_id: x for x in ledger.get_account_balances(chat_id)}
     accounts = db.list_accounts(chat_id, include_archived=True)
+
+    total_val = summary.total_wealth
+    if total_val > 0:
+        p_liq = max(0, min(100, round((summary.liquid_assets / total_val) * 100, 1)))
+        p_inv = max(0, min(100, round((summary.investments / total_val) * 100, 1)))
+        p_csh = max(0, min(100, round((summary.cash / total_val) * 100, 1)))
+    else:
+        p_liq = p_inv = p_csh = 0
+
+    allocation_bar = f"""
+    <div class='panel settings-section-card' style='margin-bottom: 24px; padding: 20px 24px;'>
+      <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;'>
+        <div style='font-size: 13.5px; font-weight: 700; color: var(--ink-primary);'>Alokasi Portofolio Kekayaan</div>
+        <div style='display: flex; gap: 14px; font-size: 12px; font-weight: 600;'>
+          <span style='color: var(--income-main);'>● Likuid: {p_liq}%</span>
+          <span style='color: #7c3aed;'>● Investasi: {p_inv}%</span>
+          <span style='color: #d97706;'>● Kas: {p_csh}%</span>
+        </div>
+      </div>
+      <div style='width: 100%; height: 10px; background: #e2e8f0; border-radius: 9999px; overflow: hidden; display: flex;'>
+        <div style='width: {p_liq}%; background: linear-gradient(90deg, #059669, #34d399); transition: width 0.5s ease;' title='Likuid: {format_rupiah(summary.liquid_assets)}'></div>
+        <div style='width: {p_inv}%; background: linear-gradient(90deg, #7c3aed, #a78bfa); transition: width 0.5s ease;' title='Investasi: {format_rupiah(summary.investments)}'></div>
+        <div style='width: {p_csh}%; background: linear-gradient(90deg, #d97706, #fbbf24); transition: width 0.5s ease;' title='Cash di tangan: {format_rupiah(summary.cash)}'></div>
+      </div>
+    </div>
+    """
     account_rows = "".join(
         f"""<tr><td><strong>{html.escape(a.name)}</strong><div class='setting-help-text'>{html.escape(a.provider or a.account_type.title())}</div></td>
         <td>{html.escape(a.account_type.title())}</td><td>{html.escape(_mask_identifier(a.account_identifier))}</td>
@@ -1052,6 +1227,7 @@ def _render_wealth_page(db: Database, chat_id: str, csrf_token: str, toast_html:
         <article class='metric-card'><div class='metric-label'>Investasi</div><div class='metric-value val-stats'>{format_rupiah(summary.investments)}</div><div class='metric-footer'><span>SBN, crypto, saham, aset</span></div></article>
         <article class='metric-card'><div class='metric-label'>Cash di Tangan</div><div class='metric-value val-balance'>{format_rupiah(summary.cash)}</div><div class='metric-footer'><span>Belum dilaporkan penggunaannya</span></div></article>
       </section>
+      {allocation_bar}
       <section class='panel settings-section-card'><div class='settings-section-header'><div><h2 class='settings-section-title'>Akun Keuangan</h2><p class='settings-section-desc'>Saldo dihitung dari saldo awal dan ledger. Transfer antar akun tidak menggandakan kekayaan.</p></div><a class='btn btn-primary' href='#akun-baru'>{_svg_icon('plus')} Tambah Akun</a></div>
         <div class='table-responsive'><table class='data-table'><thead><tr><th>Nama Akun</th><th>Jenis</th><th>Identitas</th><th>Saldo Tercatat</th><th>Status</th></tr></thead><tbody>{account_rows}</tbody></table></div>
       </section>
@@ -1191,6 +1367,43 @@ def _dashboard_response(environ, start_response):
         except (ValueError, OSError, sqlite3.Error) as exc:
             start_response("303 See Other", [("Location", f"/keuangan/backup?toast={quote_plus('Restore gagal: ' + str(exc)[:120])}")])
         return [b""]
+
+    if path.endswith("/backup/create_snapshot") and environ.get("REQUEST_METHOD") == "POST":
+        length = int(environ.get("CONTENT_LENGTH") or 0)
+        form = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "replace"))
+        if form.get("csrf_token", [""])[0] != _wealth_csrf(db):
+            start_response("403 Forbidden", [("Content-Type", "text/plain; charset=utf-8")])
+            return [b"CSRF token tidak valid"]
+        try:
+            bundle = BackupService(db).export_zip(chat_id)
+            backup_dir = os.path.join(os.path.dirname(db.path), "backups")
+            os.makedirs(backup_dir, exist_ok=True)
+            snapshot_name = f"manual-snapshot-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
+            target_path = os.path.join(backup_dir, snapshot_name)
+            with open(target_path, "wb") as f_snap:
+                f_snap.write(bundle.data)
+            start_response("303 See Other", [("Location", f"/keuangan/backup?toast={quote_plus('Snapshot lokal ' + snapshot_name + ' berhasil dibuat!')}")])
+        except Exception as exc:
+            start_response("303 See Other", [("Location", f"/keuangan/backup?toast={quote_plus('Gagal membuat snapshot: ' + str(exc)[:120])}")])
+        return [b""]
+
+    if path.endswith("/backup/download") and environ.get("REQUEST_METHOD") == "GET":
+        fname = query.get("file", [""])[0]
+        backup_dir = os.path.join(os.path.dirname(db.path), "backups")
+        safe_fname = os.path.basename(fname)
+        full_path = os.path.join(backup_dir, safe_fname)
+        if not safe_fname or not os.path.isfile(full_path):
+            start_response("404 Not Found", [("Content-Type", "text/plain; charset=utf-8")])
+            return [b"File backup tidak ditemukan"]
+        with open(full_path, "rb") as f_down:
+            down_bytes = f_down.read()
+        mime = "application/zip" if safe_fname.endswith(".zip") else ("application/json" if safe_fname.endswith(".json") else "application/octet-stream")
+        start_response("200 OK", [
+            ("Content-Type", mime),
+            ("Content-Disposition", f'attachment; filename="{safe_fname}"'),
+            ("Content-Length", str(len(down_bytes))),
+        ])
+        return [down_bytes]
 
     if path.endswith("/backup") and environ.get("REQUEST_METHOD") == "GET":
         body = _render_backup_page(db, chat_id, _wealth_csrf(db), query.get("toast", [""])[0])
@@ -1368,6 +1581,18 @@ def _dashboard_response(environ, start_response):
             db.delete_category(name)
             start_response("303 See Other", [("Location", "/keuangan/settings?tab=categories&toast=cat_deleted")])
             return [b""]
+
+    # SETTINGS: Category Sync Defaults
+    if path.endswith("/settings/category/sync_defaults") and environ.get("REQUEST_METHOD") == "POST":
+        from src.categorizer import default_categories
+        for cat in default_categories():
+            with db._conn() as conn:
+                conn.execute(
+                    "INSERT OR IGNORE INTO categories VALUES (?,?,?,?)",
+                    (cat.name, ",".join(cat.keywords), cat.emoji, cat.type)
+                )
+        start_response("303 See Other", [("Location", "/keuangan/settings?tab=categories&toast=cat_synced")])
+        return [b""]
 
     # SETTINGS: Gemini Save
     if path.endswith("/settings/gemini/save") and environ.get("REQUEST_METHOD") == "POST":
@@ -1628,6 +1853,15 @@ def _dashboard_response(environ, start_response):
           <div style="flex: 1;">
             <div class="toast-title">Kategori Berhasil Disimpan</div>
             <div class="toast-msg">Pos kategori dan kata kunci parser otomatis berhasil diperbarui.</div>
+          </div>
+          <button class="toast-close" onclick="dismissToast('main-toast')">&times;</button>
+        </div>"""
+    elif toast_type == "cat_synced":
+        toast_html = f"""<div class="toast toast-success" id="main-toast">
+          <div style="color: var(--income-main);">{_svg_icon("check")}</div>
+          <div style="flex: 1;">
+            <div class="toast-title">Kategori Standar Berhasil Disinkronkan</div>
+            <div class="toast-msg">Seluruh kategori bawaan untuk kebutuhan sehari-hari berhasil dimuat ke sistem pembukuan.</div>
           </div>
           <button class="toast-close" onclick="dismissToast('main-toast')">&times;</button>
         </div>"""
@@ -2608,12 +2842,15 @@ def application(environ, start_response):
         "/wealth/reconcile",
         "/backup",
         "/backup/export",
+        "/backup/download",
+        "/backup/create_snapshot",
         "/backup/preview",
         "/backup/restore",
         "/reports",
         "/settings",
         "/settings/category/save",
         "/settings/category/delete",
+        "/settings/category/sync_defaults",
         "/settings/gemini/save",
         "/settings/gemini/test",
         "/settings/password/save",
@@ -2735,7 +2972,7 @@ def application(environ, start_response):
                 _send_telegram(chat_id, build_expense_summary(db, chat_id, now, "bulan"))
 
             # Recap & Balance Command
-            elif text and text.split()[0].split("@")[0] == "/akun":
+            elif text and text.split()[0].split("@")[0] in ("/akun", "/rekening"):
                 accounts = db.list_accounts(chat_id)
                 if not accounts:
                     _send_telegram(chat_id, "🏦 Belum ada akun. Tambahkan melalui `/keuangan/wealth` di dasbor web.")
@@ -2749,9 +2986,15 @@ def application(environ, start_response):
                     _send_telegram(chat_id, "\n".join(lines))
 
             # Wealth summary command must be matched before /saldo legacy prefix.
-            elif text and text.split()[0].split("@")[0] == "/saldoaset":
+            elif text and text.split()[0].split("@")[0] in ("/wealth", "/kekayaan", "/saldoaset"):
                 summary = WealthLedger(db).get_wealth_summary(chat_id)
                 _send_telegram(chat_id, f"💎 *TOTAL KEKAYAAN*\n━━━━━━━━━━━━━━━━━━━━━━\n• Total aset: *{format_rupiah(summary.total_wealth)}*\n• Aset likuid: *{format_rupiah(summary.liquid_assets)}*\n• Investasi: *{format_rupiah(summary.investments)}*\n• Cash: *{format_rupiah(summary.cash)}*")
+
+            # Backup status & download shortcut
+            elif text and text.split()[0].split("@")[0] == "/backup":
+                backup_dir = os.path.join(os.path.dirname(db.path), "backups")
+                local_count = len([f for f in os.listdir(backup_dir) if os.path.isfile(os.path.join(backup_dir, f))]) if os.path.isdir(backup_dir) else 0
+                _send_telegram(chat_id, f"🛡️ *STATUS BACKUP SISTEM*\n━━━━━━━━━━━━━━━━━━━━━━\n• Snapshot lokal: *{local_count} file*\n• Format: ZIP (Data + Schema + Checksum SHA256)\n• Ekspor manual cepat: Buka `/keuangan/backup` di dasbor web untuk unduh ZIP atau pulihkan database.")
 
             elif text and text.split()[0].split("@")[0] == "/transfer":
                 parts = text.split()
