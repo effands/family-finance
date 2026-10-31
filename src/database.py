@@ -57,6 +57,34 @@ class Database:
                     updated_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS ix_accounts_chat_active ON financial_accounts(chat_id, is_active);
+                CREATE TABLE IF NOT EXISTS ledger_operations (
+                    id TEXT PRIMARY KEY,
+                    chat_id TEXT NOT NULL,
+                    operation_type TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    category TEXT NOT NULL DEFAULT '',
+                    transaction_date TEXT NOT NULL,
+                    actor_user_id TEXT NOT NULL,
+                    actor_username TEXT NOT NULL,
+                    idempotency_key TEXT,
+                    reversed_operation_id TEXT,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(chat_id, idempotency_key)
+                );
+                CREATE TABLE IF NOT EXISTS ledger_entries (
+                    id INTEGER PRIMARY KEY,
+                    operation_id TEXT NOT NULL REFERENCES ledger_operations(id),
+                    chat_id TEXT NOT NULL,
+                    account_id INTEGER NOT NULL REFERENCES financial_accounts(id),
+                    direction TEXT NOT NULL CHECK (direction IN ('debit','credit')),
+                    amount INTEGER NOT NULL CHECK (amount > 0),
+                    entry_type TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    category TEXT NOT NULL DEFAULT '',
+                    transaction_date TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS ix_ledger_account_date ON ledger_entries(chat_id, account_id, transaction_date);
+                CREATE INDEX IF NOT EXISTS ix_ledger_group ON ledger_entries(chat_id, operation_id);
                 CREATE INDEX IF NOT EXISTS ix_tx_chat_date ON transactions(chat_id, transaction_date);
                 CREATE INDEX IF NOT EXISTS ix_tx_user_created ON transactions(user_id, created_at);
                 PRAGMA journal_mode=WAL;
