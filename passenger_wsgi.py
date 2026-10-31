@@ -1153,7 +1153,8 @@ def _dashboard_response(environ, start_response):
             if len(body) > 25 * 1024 * 1024:
                 raise ValueError("Ukuran file backup maksimal 25 MB")
             service = BackupService(db)
-            preview = service.preview(body, "upload.zip", chat_id)
+            upload_name = "upload.json" if body.lstrip().startswith(b"{") else "upload.zip"
+            preview = service.preview(body, upload_name, chat_id)
             backup_dir = os.path.join(os.path.dirname(db.path), "backups")
             os.makedirs(backup_dir, exist_ok=True)
             token = hashlib.sha256(body).hexdigest()
@@ -1183,7 +1184,8 @@ def _dashboard_response(environ, start_response):
             mode = form.get("mode", ["merge"])[0]
             with open(pending, "rb") as pending_file:
                 pending_payload = pending_file.read()
-            result = BackupService(db).restore(pending_payload, "backup.zip", chat_id, mode, "web", confirm_replace=(mode == "replace"))
+            pending_name = "backup.json" if pending_payload.lstrip().startswith(b"{") else "backup.zip"
+            result = BackupService(db).restore(pending_payload, pending_name, chat_id, mode, "web", confirm_replace=(mode == "replace"))
             os.remove(pending)
             start_response("303 See Other", [("Location", f"/keuangan/backup?toast=Restore {result.mode} berhasil: {result.inserted} record baru")])
         except (ValueError, OSError, sqlite3.Error) as exc:

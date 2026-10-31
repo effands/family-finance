@@ -55,3 +55,11 @@ def test_preview_rejects_tampered_snapshot_before_restore(tmp_path):
         assert "checksum" in str(exc).lower()
     else:
         raise AssertionError("tampered backup must be rejected")
+
+
+def test_json_snapshot_can_be_previewed(tmp_path):
+    db = _db(tmp_path)
+    payload = BackupService(db).export_snapshot("chat-1", "json")
+    preview = BackupService(db).preview(payload, "backup.json", "chat-1")
+    assert preview.format == "json"
+    assert preview.counts["transactions"] == 1
