@@ -987,10 +987,25 @@ def _render_wealth_page(db: Database, chat_id: str, csrf_token: str, toast_html:
         for a in accounts
     ) or "<tr><td colspan='5'><div class='empty-state-box'><div class='empty-state-title'>Belum ada akun keuangan</div><div class='empty-state-desc'>Tambahkan rekening bank, e-wallet, cash, atau investasi untuk mulai menghitung total kekayaan.</div></div></td></tr>"
     active_options = "".join(f"<option value='{a.id}'>{html.escape(a.name)} — {html.escape(a.provider)}</option>" for a in accounts if a.is_active)
-    operation_rows = "".join(
-        f"<tr><td>{html.escape(r['transaction_date'])}</td><td><strong>{html.escape(r['operation_type'])}</strong></td><td>{html.escape(r['description'])}</td><td>{format_rupiah(r['debits'])}</td><td>{'Dibatalkan' if r['reversed_operation_id'] else ('<form method=\"post\" action=\"/keuangan/wealth/operation/reverse\"><input type=\"hidden\" name=\"csrf_token\" value=\"' + csrf_token + '\"><input type=\"hidden\" name=\"operation_id\" value=\"' + html.escape(r['id']) + '\"><input class=\"form-control\" name=\"reason\" placeholder=\"Alasan\" required><button class=\"btn btn-ghost\" type=\"submit\">Batalkan</button></form>')}</td></tr>"
-        for r in ledger.list_operations(chat_id)
-    ) or "<tr><td colspan='5'><div class='empty-state-box'>Belum ada mutasi wealth.</div></td></tr>"
+    def _operation_row(r):
+        if r["reversed_operation_id"]:
+            action_html = "Dibatalkan"
+        else:
+            action_html = (
+                '<form method="post" action="/keuangan/wealth/operation/reverse">'
+                '<input type="hidden" name="csrf_token" value="' + csrf_token + '">'
+                '<input type="hidden" name="operation_id" value="' + html.escape(r["id"]) + '">'
+                '<input class="form-control" name="reason" placeholder="Alasan" required>'
+                '<button class="btn btn-ghost" type="submit">Batalkan</button></form>'
+            )
+        return (
+            f"<tr><td>{html.escape(r['transaction_date'])}</td>"
+            f"<td><strong>{html.escape(r['operation_type'])}</strong></td>"
+            f"<td>{html.escape(r['description'])}</td><td>{format_rupiah(r['debits'])}</td>"
+            f"<td>{action_html}</td></tr>"
+        )
+
+    operation_rows = "".join(_operation_row(r) for r in ledger.list_operations(chat_id)) or "<tr><td colspan='5'><div class='empty-state-box'>Belum ada mutasi wealth.</div></td></tr>"
     return f"""<main class='page-shell'>
       <header class='topbar'><a class='brand-lockup' href='/keuangan/dashboard'><div class='brand-mark'>FF</div><div class='brand-info'><span class='brand-badge'><span class='status-dot'></span>Wealth Center</span><h1 class='brand-title'>Total Kekayaan</h1><span class='brand-desc'>Saldo tercatat lintas bank, e-wallet, cash, dan investasi</span></div></a>
       <div class='actions'><nav class='header-nav-menu'><a class='header-nav-link' href='/keuangan/dashboard'>{_svg_icon('layout-dashboard')} Dasbor</a><a class='header-nav-link active' href='/keuangan/wealth'>{_svg_icon('wallet')} Kekayaan</a><a class='header-nav-link' href='/keuangan/settings'>{_svg_icon('settings')} Pengaturan</a></nav><a class='btn btn-secondary' href='/keuangan/wealth/export.csv'>Unduh CSV</a><a class='btn btn-ghost' href='/logout'>{_svg_icon('logout')} Keluar</a></div></header>
