@@ -645,6 +645,8 @@ async def receipt_photo_handler(update: Update, context: ContextTypes.DEFAULT_TY
             f"🕒 *Jam           :* {data.get('time') or '-'}\n"
             f"📍 *Lokasi        :* {data.get('location') or '-'}\n"
             f"🏦 *Bank          :* {data.get('bank') or data.get('source_bank') or data.get('destination_bank') or '-'}\n"
+            f"👤 *Penerima      :* {data.get('recipient') or '-'}\n"
+            f"🔢 *Rekening tujuan:* {data.get('recipient_account_identifier') or '-'}\n"
             f"🔁 *Jenis         :* {data.get('transaction_kind') or '-'}\n"
             f"{detail_text}\n"
             f"━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -897,8 +899,11 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if not source:
                     raise WealthError("Akun sumber tidak ditemukan")
                 ledger = WealthLedger(db)
+                saved_description = pending["description"]
+                if pending.get("recipient") or pending.get("recipient_account_identifier") or pending.get("destination_bank"):
+                    saved_description += " | Tujuan: " + " / ".join(str(value).strip() for value in (pending.get("recipient"), pending.get("destination_bank"), pending.get("recipient_account_identifier")) if value)
                 operation = ledger.create_expense(
-                    chat_id, source.id, int(pending["amount"]), pending["description"],
+                    chat_id, source.id, int(pending["amount"]), saved_description,
                     pending["category"], date.fromisoformat(pending["date"]), user_id,
                     pending["username"], idempotency_key=f"receipt:{pending.get('pending_at')}:{source.id}",
                 )
@@ -907,6 +912,9 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return await query.edit_message_text(
                     f"✅ *Mutasi struk tersimpan*\nSumber dana: *{source.name}*\n"
                     f"{pending['description']}: *{format_rupiah(pending['amount'])}*\n"
+                    f"Penerima: *{pending.get('recipient') or '-'}*\n"
+                    f"Rekening tujuan: *{pending.get('recipient_account_identifier') or '-'}*\n"
+                    f"Bank tujuan: *{pending.get('destination_bank') or '-'}*\n"
                     f"Saldo total: *{format_rupiah(summary.total_wealth)}*\nRef: `{operation.id[:10]}`",
                     parse_mode="Markdown",
                 )
