@@ -714,6 +714,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pending = context.user_data.get("pending_transfer")
         if data == "transfer:cancel":
             context.user_data.pop("pending_transfer", None)
+            context.user_data.pop("pending_transfer_fee", None)
             return await query.edit_message_text("❌ Transfer dibatalkan.")
         if not pending or pending.get("user_id") != user_id:
             context.user_data.pop("pending_transfer", None)
