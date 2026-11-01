@@ -287,9 +287,9 @@ class Database:
         consistent without duplicating internal transfers.
         """
         rows = self.list_transactions(f)
-        q = """SELECT o.id, o.actor_user_id, o.actor_username, o.chat_id,
+        q = """SELECT o.id, o.actor_user_id AS user_id, o.actor_username AS username, o.chat_id,
                        CASE WHEN o.operation_type='income' THEN 'income' ELSE 'expense' END AS type,
-                       SUM(CASE WHEN e.direction='debit' THEN e.amount ELSE 0 END) AS amount,
+                       SUM(CASE WHEN (o.operation_type='income' AND e.direction='credit') OR (o.operation_type='expense' AND e.direction='debit') THEN e.amount ELSE 0 END) AS amount,
                        o.description, o.category, o.transaction_date, o.created_at
                 FROM ledger_operations o
                 JOIN ledger_entries e ON e.operation_id=o.id
