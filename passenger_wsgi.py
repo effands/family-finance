@@ -504,7 +504,7 @@ def _rows_html(rows, active_chat_id=""):
         raw_user_name = x.username or x.user_id or "User"
         user_name = html.escape(_display_user_name(raw_user_name))
         user_initials = _monogram(user_name)
-        desc_escaped = html.escape(x.description)
+        desc_escaped = html.escape(x.description.split(" | Sumber:", 1)[0].split(" | Tujuan:", 1)[0])
         cat_escaped = html.escape(x.category)
         desc_js = desc_escaped.replace("'", "\\'")
         display_id = f"WL-{str(x.id)[:8]}" if not isinstance(x.id, int) else str(x.id)
@@ -512,13 +512,16 @@ def _rows_html(rows, active_chat_id=""):
         destination = detail_data.get("destination_account") or "-"
         destination_provider = detail_data.get("destination_provider") or "-"
         destination_identifier = detail_data.get("destination_identifier") or "-"
+        source_account = detail_data.get("source_account") or "-"
+        if "| Sumber:" in x.description:
+            source_account = x.description.split("| Sumber:", 1)[1].split("|", 1)[0].strip() or source_account
         if "| Tujuan:" in x.description:
             raw_target = x.description.split("| Tujuan:", 1)[1].strip()
             target_parts = [part.strip() for part in raw_target.split("/")]
             destination = target_parts[0] or destination
             if len(target_parts) > 1: destination_provider = target_parts[1] or destination_provider
             if len(target_parts) > 2: destination_identifier = target_parts[2] or destination_identifier
-        detail_payload = {"id": display_id, "date": x.transaction_date.isoformat(), "type": "Pemasukan" if is_inc else "Pengeluaran", "category": x.category, "description": x.description.split(" | Tujuan:", 1)[0], "amount": format_rupiah(x.amount), "user": _display_user_name(raw_user_name), "source": detail_data.get("source_account") or "-", "destination": destination, "destination_provider": destination_provider, "destination_identifier": destination_identifier}
+        detail_payload = {"id": display_id, "date": x.transaction_date.isoformat(), "type": "Pemasukan" if is_inc else "Pengeluaran", "category": x.category, "description": x.description.split(" | Sumber:", 1)[0].split(" | Tujuan:", 1)[0], "amount": format_rupiah(x.amount), "user": _display_user_name(raw_user_name), "source": source_account, "destination": destination, "destination_provider": destination_provider, "destination_identifier": destination_identifier}
         detail_json = html.escape(json.dumps(detail_payload, ensure_ascii=False), quote=True)
         detail_action = f"<button class='btn btn-ghost btn-sm' type='button' title='Lihat detail transaksi' aria-label='Lihat detail transaksi' onclick='openDetailModal({detail_json})'>{_svg_icon('eye')}</button>"
         edit_action = "" if not isinstance(x.id, int) else f"<button class='btn btn-ghost btn-sm' type='button' title='Edit transaksi' aria-label='Edit transaksi' onclick=\"openEditModal({x.id}, '{x.type}', {x.amount}, {json.dumps(x.description)}, {json.dumps(x.category)}, '{x.transaction_date.isoformat()}', {json.dumps(_display_user_name(raw_user_name))})\">{_svg_icon('edit')}</button>"

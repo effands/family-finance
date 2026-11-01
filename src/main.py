@@ -88,6 +88,17 @@ def _explicit_payment_hint(text: str) -> str | None:
     return None
 
 
+def _accounts_for_payment_hint(accounts, hint: str | None):
+    """Limit source choices to the explicitly named payment method."""
+    if not hint:
+        return list(accounts)
+    if hint == "cash":
+        return [a for a in accounts if a.account_type == "cash"]
+    if hint == "qris":
+        return [a for a in accounts if a.account_type == "ewallet" or "qris" in a.name.casefold()]
+    return [a for a in accounts if a.account_type == "ewallet" and hint in f"{a.name} {a.provider}".casefold()]
+
+
 def get_command_inline_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
@@ -273,11 +284,15 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, te
         category = categorize(parsed.description, db.list_categories())
     uname = user.username or user.first_name or "user"
     wealth_ledger = WealthLedger(db)
-    wealth_account = db.get_account(force_account_id, chat_id) if force_account_id else wealth_ledger.get_default_account(chat_id, parsed.type, str(user.id))
-    if parsed.type == "expense" and force_account_id is None:
+    explicit_payment = _explicit_payment_hint(text)
+    # Cash is physical money, not a bank/e-wallet account. Keep it in the
+    # transaction journal without charging the default wallet.
+    wealth_account = None if parsed.type == "expense" and explicit_payment == "cash" else (db.get_account(force_account_id, chat_id) if force_account_id else wealth_ledger.get_default_account(chat_id, parsed.type, str(user.id)))
+    if parsed.type == "expense" and force_account_id is None and explicit_payment != "cash":
         accounts = db.list_accounts(chat_id)
         lowered = str(text).casefold()
         explicit_payment = _explicit_payment_hint(text)
+        source_choices = _accounts_for_payment_hint(accounts, explicit_payment)
         is_transfer = any(token in lowered.split() for token in ("transfer", "trf", "pindah"))
         if is_transfer and len(accounts) >= 2:
             context.user_data["pending_transfer"] = {
@@ -303,11 +318,13 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, te
         else:
             hinted = next((a for a in accounts if source_matches(a)), None)
         if hinted is None:
+            if explicit_payment and not source_choices:
+                return await reply.reply_text(f"💳 Akun {explicit_payment.upper()} belum ada. Tambahkan akun {explicit_payment.upper()} dulu, lalu ulangi transaksi.")
             if not accounts:
                 return await reply.reply_text("💳 Akun sumber belum ada. Tambahkan akun Cash, DANA, GoPay, OVO, atau bank terlebih dahulu.")
             context.user_data["pending_transaction_source"] = {"text": text}
             balances = {item.account_id: item.balance for item in WealthLedger(db).get_account_balances(chat_id, include_archived=False)}
-            rows = [[InlineKeyboardButton(f"🏦 {a.name} - {a.holder_name} · {format_rupiah(balances.get(a.id, 0))}", callback_data=f"txsource:{a.id}")] for a in accounts if a.id in balances]
+            rows = [[InlineKeyboardButton(f"🏦 {a.name} - {a.holder_name} · {format_rupiah(balances.get(a.id, 0))}", callback_data=f"txsource:{a.id}")] for a in source_choices if a.id in balances]
             rows.append([InlineKeyboardButton("❌ Batalkan", callback_data="txsource:cancel")])
             prompt = f"💳 Metode {explicit_payment.upper()} disebut. Pilih akun sumber:" if explicit_payment else "💳 Bayar dari akun mana?"
             return await reply.reply_text(prompt, reply_markup=InlineKeyboardMarkup(rows))
@@ -333,7 +350,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, te
             chat_id,
             parsed.type,
             parsed.amount,
-            parsed.description,
+            f"{parsed.description} | Sumber: CASH" if parsed.type == "expense" and explicit_payment == "cash" else parsed.description,
             category.name,
             parsed.transaction_date,
             now,
