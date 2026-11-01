@@ -27,6 +27,7 @@ from .receipt_ai import GeminiKeyPool, extract_receipt, interpret_text, transcri
 from .reports import build_expense_summary, build_income_summary, build_report
 from .wealth import WealthLedger, WealthError, InsufficientFundsError, parse_idr_amount
 from .telegram_wealth import WealthTelegramMenu
+from .intent import classify_finance_intent, account_request_summary
 
 MENU_KEYBOARD = ReplyKeyboardMarkup(
     [
@@ -124,6 +125,16 @@ async def menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     guided = context.application.bot_data["wealth_menu"].handle_text(str(update.effective_chat.id), str(update.effective_user.id), text, str(update.update_id))
     if guided:
         return await update.message.reply_text(guided.text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(guided.keyboard["inline_keyboard"]))
+    intent = classify_finance_intent(text)
+    if intent == "account_add":
+        menu = context.application.bot_data["wealth_menu"]
+        reply = menu.handle_callback(str(update.effective_chat.id), str(update.effective_user.id), "wealth:account:add", str(update.update_id))
+        return await update.message.reply_text(
+            f"🤖 Saya pahami Anda ingin menambahkan {account_request_summary(text)} sebagai akun keuangan baru.\\n\\n"
+            "Kita isi datanya lewat tombol dan konfirmasi agar tidak salah mencatat sebagai pengeluaran.\\n\\n" + reply.text,
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(reply.keyboard["inline_keyboard"]),
+        )
     if text in ("📊 Rekap Bulan Ini", "💰 Saldo Kas"):
         return await report_cmd(update, context, "bulan")
     if text == "📈 Total Pemasukan":
