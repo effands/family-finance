@@ -496,6 +496,7 @@ def _rows_html(rows, active_chat_id=""):
         detail_data = getattr(x, "detail_data", {})
         detail_html = f"<div class='detail-grid'><div><b>Sumber</b><br>{html.escape(str(detail_data.get('source_account') or '-'))}</div><div><b>Tujuan</b><br>{html.escape(str(detail_data.get('destination_account') or '-'))}</div><div><b>Bank tujuan</b><br>{html.escape(str(detail_data.get('destination_provider') or '-'))}</div><div><b>Rekening tujuan</b><br>{html.escape(str(detail_data.get('destination_identifier') or '-'))}</div></div>"
         detail_action = f"<details class='tx-detail'><summary class='btn btn-ghost btn-sm' title='Lihat detail transaksi' aria-label='Lihat detail transaksi'>{_svg_icon('eye')}</summary>{detail_html}</details>"
+        edit_action = "" if not isinstance(x.id, int) else f"<button class='btn btn-ghost btn-sm' type='button' title='Edit transaksi' aria-label='Edit transaksi' onclick=\"openEditModal({x.id}, '{x.type}', {x.amount}, {json.dumps(x.description)}, {json.dumps(x.category)}, '{x.transaction_date.isoformat()}', {json.dumps(x.username or x.user_id or 'Admin')})\">{_svg_icon('edit')}</button>"
         delete_action = "" if not isinstance(x.id, int) else f"<button class='btn btn-ghost btn-sm' type='button' title='Hapus transaksi ini' onclick=\"confirmDelete({x.id}, '{desc_js}', '{format_rupiah(x.amount)}')\">{_svg_icon('trash')}</button>"
         display_id = f"WL-{str(x.id)[:8]}" if not isinstance(x.id, int) else str(x.id)
 
@@ -513,7 +514,7 @@ def _rows_html(rows, active_chat_id=""):
             </div>
           </td>
           <td class="action-cell">
-            {detail_action} {delete_action}
+            {detail_action} {edit_action} {delete_action}
           </td>
         </tr>""")
     return "".join(output)
@@ -2150,6 +2151,24 @@ def _dashboard_response(environ, start_response):
             start_response("303 See Other", [("Location", f"/keuangan/dashboard?period={ret_period}&toast=err_amount")])
             return [b""]
 
+    # Update legacy transaction via Web
+    if path.endswith("/transaction/update") and environ.get("REQUEST_METHOD") == "POST":
+        length = int(environ.get("CONTENT_LENGTH") or 0)
+        form = parse_qs(environ["wsgi.input"].read(length).decode("utf-8", "replace"))
+        tx_id = form.get("id", ["0"])[0].strip()
+        ret_period = form.get("period", ["month"])[0]
+        try:
+            amount = int(form.get("amount", ["0"])[0].replace(".", "").replace(",", "").strip())
+            tx_date = date.fromisoformat(form.get("transaction_date", [date.today().isoformat()])[0])
+            tx_type = form.get("type", ["expense"])[0] if form.get("type", ["expense"])[0] in ("income", "expense") else "expense"
+            if not tx_id.isdigit() or amount <= 0:
+                raise ValueError("Data transaksi tidak valid")
+            ok = db.update_transaction_web(int(tx_id), chat_id, amount=amount, description=form.get("description", ["Transaksi"])[0].strip(), category=form.get("category", ["Lain-lain"])[0].strip(), transaction_date=tx_date, type=tx_type, username=form.get("username", ["Admin"])[0].strip())
+            toast = "updated" if ok else "update_error"
+        except (ValueError, TypeError):
+            toast = "update_error"
+        start_response("303 See Other", [("Location", f"/keuangan/dashboard?period={ret_period}&toast={toast}")])
+        return [b""]
     # Delete Transaction via Web
     if path.endswith("/transaction/delete") and environ.get("REQUEST_METHOD") == "POST":
         length = int(environ.get("CONTENT_LENGTH") or 0)
@@ -2333,6 +2352,10 @@ def _dashboard_response(environ, start_response):
         toast_html = '<div class="toast toast-success" id="main-toast"><div class="toast-title">Bot Telegram Dimatikan</div><div class="toast-msg">Bot tidak akan memproses pesan baru sampai dinyalakan kembali.</div><button class="toast-close" onclick="dismissToast(\'main-toast\')">&times;</button></div>'
     elif toast_type == "bot_error":
         toast_html = '<div class="toast toast-error" id="main-toast"><div class="toast-title">Kontrol Bot Gagal</div><div class="toast-msg">Proses bot belum berhasil dikendalikan. Buka tab Info Sistem untuk melihat statusnya.</div><button class="toast-close" onclick="dismissToast(\'main-toast\')">&times;</button></div>'
+    elif toast_type == "updated":
+        toast_html = '<div class="toast toast-success" id="main-toast"><div class="toast-title">Transaksi Diperbarui</div><div class="toast-msg">Perubahan transaksi berhasil disimpan.</div></div>'
+    elif toast_type == "update_error":
+        toast_html = '<div class="toast toast-error" id="main-toast"><div class="toast-title">Gagal Memperbarui</div><div class="toast-msg">Transaksi tidak ditemukan atau data tidak valid.</div></div>'
 
     # ROUTE: SETTINGS PAGE
     if path.endswith("/wealth"):
@@ -2949,6 +2972,25 @@ def _dashboard_response(environ, start_response):
   </div>
 </div>
 
+<!-- Modal: Edit Transaksi Legacy -->
+<div class="modal-overlay" id="modal-edit-tx">
+  <div class="modal-dialog">
+    <div class="modal-header"><h3>Edit Transaksi</h3><button class="modal-close-btn" type="button" onclick="closeModal('modal-edit-tx')">&times;</button></div>
+    <form method="post" action="/keuangan/transaction/update">
+      <input type="hidden" name="period" value="{period}"><input type="hidden" id="edit-tx-id" name="id">
+      <div class="modal-body">
+        <div class="form-group"><label>Jenis</label><select class="form-control" id="edit-tx-type" name="type"><option value="expense">Pengeluaran</option><option value="income">Pemasukan</option></select></div>
+        <div class="form-group"><label>Nominal (IDR)</label><input class="form-control" id="edit-tx-amount" name="amount" type="number" min="1" required></div>
+        <div class="form-group"><label>Deskripsi</label><input class="form-control" id="edit-tx-desc" name="description" required></div>
+        <div class="form-group"><label>Kategori</label><select class="form-control" id="edit-tx-cat" name="category">{categories_options}</select></div>
+        <div class="form-group"><label>Tanggal</label><input class="form-control" id="edit-tx-date" name="transaction_date" type="date" required></div>
+        <div class="form-group"><label>Pencatat</label><input class="form-control" id="edit-tx-user" name="username" required></div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-ghost" type="button" onclick="closeModal('modal-edit-tx')">Batal</button><button class="btn btn-primary" type="submit">Simpan Perubahan</button></div>
+    </form>
+  </div>
+</div>
+
 <!-- Modal: Impor Berkas -->
 <div class="modal-overlay" id="modal-import-csv">
   <div class="modal-dialog">
@@ -3043,6 +3085,16 @@ function closeModal(id) {{
 
 function openAddModal() {{ openModal('modal-add-tx'); }}
 function openImportModal() {{ openModal('modal-import-csv'); }}
+function openEditModal(id, type, amount, description, category, transactionDate, username) {{
+  document.getElementById('edit-tx-id').value = id;
+  document.getElementById('edit-tx-type').value = type;
+  document.getElementById('edit-tx-amount').value = amount;
+  document.getElementById('edit-tx-desc').value = description;
+  document.getElementById('edit-tx-cat').value = category;
+  document.getElementById('edit-tx-date').value = transactionDate;
+  document.getElementById('edit-tx-user').value = username;
+  openModal('modal-edit-tx');
+}}
 
 function confirmDelete(id, desc, amount) {{
   document.getElementById('delete-tx-id').value = id;
@@ -3236,6 +3288,7 @@ def application(environ, start_response):
         "/import",
         "/template.csv",
         "/transaction/create",
+        "/transaction/update",
         "/transaction/delete",
         "/logout",
         "/static/app.css",

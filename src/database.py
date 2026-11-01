@@ -351,6 +351,14 @@ class Database:
         with self._conn() as c:
             return c.execute(q, p).rowcount == 1
 
+    def update_transaction_web(self, id, chat_id, **changes):
+        allowed = {k: v for k, v in changes.items() if k in {"amount", "description", "category", "type", "transaction_date", "username"}}
+        if not allowed:
+            return False
+        q = "UPDATE transactions SET " + ",".join(f"{k}=?" for k in allowed) + " WHERE id=? AND chat_id=?"
+        with self._conn() as c:
+            return c.execute(q, list(allowed.values()) + [id, chat_id]).rowcount == 1
+
     def list_categories(self):
         with self._conn() as c:
             return [Category(r["name"], [x for x in r["keywords"].split(",") if x], r["emoji"], r["type"]) for r in c.execute("SELECT * FROM categories ORDER BY name").fetchall()]
