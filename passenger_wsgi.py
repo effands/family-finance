@@ -487,6 +487,10 @@ def _rows_html(rows, active_chat_id=""):
         desc_escaped = html.escape(x.description)
         cat_escaped = html.escape(x.category)
         desc_js = desc_escaped.replace("'", "\\'")
+        detail_data = getattr(x, "detail_data", {})
+        detail_html = f"<div class='detail-grid'><div><b>Sumber</b><br>{html.escape(str(detail_data.get('source_account') or '-'))}</div><div><b>Tujuan</b><br>{html.escape(str(detail_data.get('destination_account') or '-'))}</div><div><b>Bank tujuan</b><br>{html.escape(str(detail_data.get('destination_provider') or '-'))}</div><div><b>Rekening tujuan</b><br>{html.escape(str(detail_data.get('destination_identifier') or '-'))}</div></div>"
+        detail_action = f"<details class='tx-detail'><summary class='btn btn-ghost btn-sm'>Lihat detail</summary>{detail_html}</details>"
+        delete_action = "" if not isinstance(x.id, int) else f"<button class='btn btn-ghost btn-sm' type='button' title='Hapus transaksi ini' onclick=\"confirmDelete({x.id}, '{desc_js}', '{format_rupiah(x.amount)}')\">{_svg_icon('trash')}</button>"
 
         output.append(f"""<tr class="tx-row" data-id="{x.id}">
           <td class="tabular-nums" style="color: var(--ink-muted); font-size: 12px; font-weight: 600;">#{x.id}</td>
@@ -502,9 +506,7 @@ def _rows_html(rows, active_chat_id=""):
             </div>
           </td>
           <td class="action-cell">
-            <button class="btn btn-ghost btn-sm" type="button" title="Hapus transaksi ini" onclick="confirmDelete({x.id}, '{desc_js}', '{format_rupiah(x.amount)}')">
-              {_svg_icon("trash")}
-            </button>
+            {detail_action} {delete_action}
           </td>
         </tr>""")
     return "".join(output)

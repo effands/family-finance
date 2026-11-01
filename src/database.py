@@ -290,9 +290,14 @@ class Database:
         q = """SELECT o.id, o.actor_user_id AS user_id, o.actor_username AS username, o.chat_id,
                        CASE WHEN o.operation_type='income' THEN 'income' ELSE 'expense' END AS type,
                        SUM(CASE WHEN (o.operation_type='income' AND e.direction='credit') OR (o.operation_type='expense' AND e.direction='debit') THEN e.amount ELSE 0 END) AS amount,
-                       o.description, o.category, o.transaction_date, o.created_at
+                       o.description, o.category, o.transaction_date, o.created_at,
+                       MAX(CASE WHEN e.direction='debit' THEN a.name END) AS source_account,
+                       MAX(CASE WHEN e.direction='credit' THEN a.name END) AS destination_account,
+                       MAX(CASE WHEN e.direction='credit' THEN a.provider END) AS destination_provider,
+                       MAX(CASE WHEN e.direction='credit' THEN a.account_identifier END) AS destination_identifier
                 FROM ledger_operations o
                 JOIN ledger_entries e ON e.operation_id=o.id
+                LEFT JOIN financial_accounts a ON a.id=e.account_id
                 WHERE o.chat_id=? AND o.operation_type IN ('income','expense')
                   AND o.id NOT IN (SELECT operation_id FROM legacy_ledger_links WHERE chat_id=?)
                 GROUP BY o.id"""
@@ -304,6 +309,7 @@ class Database:
         with self._conn() as c:
             for r in c.execute(q, params).fetchall():
                 item = self._row(r)
+                item.detail_data = {key: r[key] for key in ("source_account", "destination_account", "destination_provider", "destination_identifier") if r[key]}
                 if f.transaction_type and item.type != f.transaction_type:
                     continue
                 if f.category and item.category != f.category:
