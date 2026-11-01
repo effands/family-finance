@@ -1806,12 +1806,14 @@ def _dashboard_response(environ, start_response):
             return [b"CSRF token tidak valid"]
         try:
             opening_date = date.fromisoformat(form.get("opening_balance_date", [date.today().isoformat()])[0])
-            name = form.get("name", [""])[0].strip()
+            name = form.get("name", [""])[0].strip().upper()
             if not name:
                 raise WealthError("Nama akun wajib diisi")
             opening = parse_idr_amount(form.get("opening_balance", ["0"])[0]) if form.get("opening_balance", ["0"])[0].strip() else 0
             creation_key = form.get("creation_key", [""])[0].strip() or hashlib.sha256((str(form) + str(environ.get("HTTP_COOKIE", ""))).encode()).hexdigest()
-            db.create_account(FinancialAccount(None, chat_id, name, form.get("account_type", ["bank"])[0], form.get("provider", [""])[0], form.get("holder_name", [""])[0], form.get("account_identifier", [""])[0], "IDR", opening, opening_date), idempotency_key=creation_key)
+            provider = form.get("provider", [""])[0].strip().upper()
+            holder_name = form.get("holder_name", [""])[0].strip().upper()
+            db.create_account(FinancialAccount(None, chat_id, name, form.get("account_type", ["bank"])[0], provider, holder_name, form.get("account_identifier", [""])[0].strip(), "IDR", opening, opening_date), idempotency_key=creation_key)
             start_response("303 See Other", [("Location", "/keuangan/wealth?toast=account_saved")])
         except (ValueError, WealthError) as exc:
             start_response("303 See Other", [("Location", f"/keuangan/wealth?toast=wealth_error&detail={quote_plus(str(exc)[:140])}")])
@@ -3260,7 +3262,7 @@ def application(environ, start_response):
                     if reply.action == "account_create":
                         try:
                             values = reply.payload
-                            account = FinancialAccount(None, chat_id, values["name"], values["account_type"], values["provider"], values["holder_name"], values["account_identifier"], "IDR", parse_idr_amount(values["opening_balance"]), date.today())
+                            account = FinancialAccount(None, chat_id, values["name"].strip().upper(), values["account_type"], values["provider"].strip().upper(), values["holder_name"].strip().upper(), values["account_identifier"].strip(), "IDR", parse_idr_amount(values["opening_balance"]), date.today())
                             db.create_account(account, idempotency_key=f"telegram-account:{update.get('update_id')}")
                             reply.text = f"✅ *Akun berhasil ditambahkan*\n\n{account.name}\nSaldo awal: *{format_rupiah(account.opening_balance)}*\nID akun: `{account.id}`"
                         except (KeyError, ValueError, WealthError) as exc:

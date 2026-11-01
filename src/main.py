@@ -698,7 +698,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 existing = db.get_account(int(pending["existing_id"]), chat_id)
                 if not existing:
                     raise WealthError("Akun duplikat tidak ditemukan")
-                db.update_account_metadata(existing.id, chat_id, name=pending["name"], provider=pending["provider"], holder_name=pending["holder_name"], account_identifier=pending["account_identifier"])
+                db.update_account_metadata(existing.id, chat_id, name=pending["name"].strip().upper(), provider=pending["provider"].strip().upper(), holder_name=pending["holder_name"].strip().upper(), account_identifier=pending["account_identifier"].strip())
                 WealthLedger(db).reconcile_account(chat_id, existing.id, parse_idr_amount(pending["opening_balance"], allow_zero=True), "Update akun duplikat", date.today(), user_id, update.effective_user.username or "user")
                 return await query.message.reply_text(f"✅ Akun {existing.name} berhasil diperbarui.\nID akun: {existing.id}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Menu Utama", callback_data="wealth:home")]]))
             except (KeyError, ValueError, WealthError) as exc:
@@ -710,7 +710,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 existing = db.get_account(int(values["account_id"]), chat_id)
                 if not existing:
                     raise WealthError("Akun tidak ditemukan")
-                db.update_account_metadata(existing.id, chat_id, name=values["name"], provider=values["provider"], holder_name=values["holder_name"], account_identifier=values["account_identifier"])
+                db.update_account_metadata(existing.id, chat_id, name=values["name"].strip().upper(), provider=values["provider"].strip().upper(), holder_name=values["holder_name"].strip().upper(), account_identifier=values["account_identifier"].strip())
                 WealthLedger(db).reconcile_account(chat_id, existing.id, parse_idr_amount(values["actual_balance"], allow_zero=True), "Edit akun dari Telegram", date.today(), user_id, update.effective_user.username or "user")
                 reply.text = f"✅ Akun {values['name']} dan saldo berhasil diperbarui.\nID akun: {existing.id}"
             except (KeyError, ValueError, WealthError) as exc:
@@ -718,7 +718,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif reply.action == "account_create":
             try:
                 values = reply.payload
-                account = FinancialAccount(None, chat_id, values["name"], values["account_type"], values["provider"], values["holder_name"], values["account_identifier"], "IDR", parse_idr_amount(values["opening_balance"], allow_zero=True), date.today())
+                account = FinancialAccount(None, chat_id, values["name"].strip().upper(), values["account_type"], values["provider"].strip().upper(), values["holder_name"].strip().upper(), values["account_identifier"].strip(), "IDR", parse_idr_amount(values["opening_balance"], allow_zero=True), date.today())
                 normalized = lambda value: " ".join(str(value).casefold().split())
                 identifier = normalized(values.get("account_identifier", ""))
                 duplicate = next((item for item in db.list_accounts(chat_id) if (
