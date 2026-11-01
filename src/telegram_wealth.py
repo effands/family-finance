@@ -72,7 +72,7 @@ class WealthTelegramMenu:
         if session.step >= len(fields):
             return TelegramReply("🔎 Data akun sudah lengkap. Periksa lalu konfirmasi.", self._keyboard([[('✅ Konfirmasi', 'wealth:confirm'), ('❌ Batalkan', 'wealth:cancel')]]), action="confirm", payload=dict(session.values))
         prompts = ["Ketik nama akun/panggilan", "Ketik jenis akun: bank, ewallet, cash, atau investment", "Ketik nama bank/provider", "Ketik nama pemilik akun", "Ketik nomor rekening/ID (boleh 4 digit terakhir)", "Ketik saldo awal dalam rupiah"]
-        return TelegramReply("📝 Saya sudah membaca sebagian data.\n\n" + prompts[session.step], self._keyboard([[('❌ Batalkan', 'wealth:cancel'), ('🏠 Menu Utama', 'wealth:home')]]), action="input", payload=session.values)
+        return TelegramReply("📝 Lengkapi data:\n" + prompts[session.step], self._keyboard([[('❌ Batalkan', 'wealth:cancel'), ('🏠 Menu Utama', 'wealth:home')]]), action="input", payload=session.values)
 
     def handle_callback(self, chat_id, user_id, callback_data, update_id=""):
         session = self._session(chat_id, user_id)

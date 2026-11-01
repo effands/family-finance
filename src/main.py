@@ -149,8 +149,7 @@ async def menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             extract_account_fields(text),
         )
         return await update.message.reply_text(
-            f"🤖 Saya pahami Anda ingin menambahkan {account_request_summary(text)} sebagai akun keuangan baru.\n\n"
-            "Kita isi datanya lewat tombol dan konfirmasi agar tidak salah mencatat sebagai pengeluaran.\n\n" + reply.text,
+            f"🏦 Tambah akun: *{account_request_summary(text)}*\n\n" + reply.text,
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(reply.keyboard["inline_keyboard"]),
         )
