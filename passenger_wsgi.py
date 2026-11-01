@@ -103,6 +103,7 @@ def _svg_icon(name: str) -> str:
         "sparkles": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>',
         "shield": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
         "edit": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>',
+        "eye": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>',
         "key": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>',
         "file-pdf": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M10 12h1a1.5 1.5 0 0 1 1.5 1.5v0a1.5 1.5 0 0 1-1.5 1.5H10v-3z"/><path d="M15 12h2a1.5 1.5 0 0 1 1.5 1.5v0a1.5 1.5 0 0 1-1.5 1.5h-1"/><path d="M6 12v3"/></svg>',
         "git-pull": '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/></svg>',
@@ -489,11 +490,12 @@ def _rows_html(rows, active_chat_id=""):
         desc_js = desc_escaped.replace("'", "\\'")
         detail_data = getattr(x, "detail_data", {})
         detail_html = f"<div class='detail-grid'><div><b>Sumber</b><br>{html.escape(str(detail_data.get('source_account') or '-'))}</div><div><b>Tujuan</b><br>{html.escape(str(detail_data.get('destination_account') or '-'))}</div><div><b>Bank tujuan</b><br>{html.escape(str(detail_data.get('destination_provider') or '-'))}</div><div><b>Rekening tujuan</b><br>{html.escape(str(detail_data.get('destination_identifier') or '-'))}</div></div>"
-        detail_action = f"<details class='tx-detail'><summary class='btn btn-ghost btn-sm'>Lihat detail</summary>{detail_html}</details>"
+        detail_action = f"<details class='tx-detail'><summary class='btn btn-ghost btn-sm' title='Lihat detail transaksi' aria-label='Lihat detail transaksi'>{_svg_icon('eye')}</summary>{detail_html}</details>"
         delete_action = "" if not isinstance(x.id, int) else f"<button class='btn btn-ghost btn-sm' type='button' title='Hapus transaksi ini' onclick=\"confirmDelete({x.id}, '{desc_js}', '{format_rupiah(x.amount)}')\">{_svg_icon('trash')}</button>"
+        display_id = f"WL-{str(x.id)[:8]}" if not isinstance(x.id, int) else str(x.id)
 
         output.append(f"""<tr class="tx-row" data-id="{x.id}">
-          <td class="tabular-nums" style="color: var(--ink-muted); font-size: 12px; font-weight: 600;">#{x.id}</td>
+          <td class="tabular-nums" style="color: var(--ink-muted); font-size: 12px; font-weight: 600;" title="ID internal: {html.escape(str(x.id))}">#{display_id}</td>
           <td class="tabular-nums" style="white-space: nowrap; font-weight: 500;">{format_date_id(x.transaction_date)}</td>
           <td>{type_badge}</td>
           <td><span class="category-chip">{cat_escaped}</span></td>
