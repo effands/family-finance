@@ -234,11 +234,18 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, te
     if parsed.type == "expense" and force_account_id is None:
         accounts = db.list_accounts(chat_id)
         lowered = str(text).casefold()
-        hinted = next((a for a in accounts if a.name.casefold() in lowered or a.provider.casefold() in lowered or (a.account_type == "cash" and "cash" in lowered)), None)
+        def source_matches(account):
+            name = account.name.casefold()
+            provider = account.provider.casefold()
+            holder = account.holder_name.casefold()
+            direct = name in lowered or provider in lowered or (account.account_type == "cash" and "cash" in lowered)
+            owner_pair = holder and holder in lowered and (name in lowered or provider in lowered)
+            return direct or owner_pair
+        hinted = next((a for a in accounts if source_matches(a)), None)
         if hinted is None and accounts:
             context.user_data["pending_transaction_source"] = {"text": text}
             balances = {item.account_id: item.balance for item in WealthLedger(db).get_account_balances(chat_id, include_archived=False)}
-            rows = [[InlineKeyboardButton(f"🏦 {a.name} · {format_rupiah(balances.get(a.id, 0))}", callback_data=f"txsource:{a.id}")] for a in accounts if a.id in balances]
+            rows = [[InlineKeyboardButton(f"🏦 {a.name} - {a.holder_name} · {format_rupiah(balances.get(a.id, 0))}", callback_data=f"txsource:{a.id}")] for a in accounts if a.id in balances]
             rows.append([InlineKeyboardButton("❌ Batalkan", callback_data="txsource:cancel")])
             return await reply.reply_text("💳 Bayar dari akun mana?", reply_markup=InlineKeyboardMarkup(rows))
     if wealth_account:
