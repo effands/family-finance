@@ -420,7 +420,8 @@ async def accounts_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ident = ("•••• " + account.account_identifier[-4:]) if len(account.account_identifier) > 4 else "—"
         provider = account.provider or account.account_type
         provider_line = f"  Provider: {provider} ·" if provider.casefold() != account.name.casefold() else " "
-        lines.append(f"• *{account.name}*\n{provider_line} ID {account.id} · {ident} · {format_rupiah(balance)}")
+        owner = f" - {account.holder_name}" if account.holder_name and account.holder_name.casefold() != account.name.casefold() else ""
+        lines.append(f"• *{account.name}{owner}*\n{provider_line} ID {account.id} · {ident} · {format_rupiah(balance)}")
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
@@ -710,7 +711,8 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     balance = balances[account.id].balance
                     provider = account.provider or account.account_type
                     provider_line = f"  Provider: {provider} ·" if provider.casefold() != account.name.casefold() else " "
-                    lines.append(f"• *{account.name}*\n{provider_line} ID {account.id} · *{format_rupiah(balance)}*")
+                    owner = f" - {account.holder_name}" if account.holder_name and account.holder_name.casefold() != account.name.casefold() else ""
+                    lines.append(f"• *{account.name}{owner}*\n{provider_line} ID {account.id} · *{format_rupiah(balance)}*")
                 reply.text = "\n".join(lines)
         elif reply.action == "reports":
             rows = WealthLedger(db).list_operations(chat_id, limit=10)
