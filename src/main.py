@@ -720,7 +720,15 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 values = reply.payload
                 account = FinancialAccount(None, chat_id, values["name"], values["account_type"], values["provider"], values["holder_name"], values["account_identifier"], "IDR", parse_idr_amount(values["opening_balance"], allow_zero=True), date.today())
                 normalized = lambda value: " ".join(str(value).casefold().split())
-                duplicate = next((item for item in db.list_accounts(chat_id) if (values.get("account_identifier") and normalized(item.account_identifier) == normalized(values["account_identifier"])) or (normalized(item.name) == normalized(values["name"]) and normalized(item.provider) == normalized(values["provider"]))), None)
+                identifier = normalized(values.get("account_identifier", ""))
+                duplicate = next((item for item in db.list_accounts(chat_id) if (
+                    identifier and normalized(item.account_identifier) == identifier
+                ) or (
+                    not identifier
+                    and normalized(item.name) == normalized(values["name"])
+                    and normalized(item.provider) == normalized(values["provider"])
+                    and normalized(item.holder_name) == normalized(values.get("holder_name", ""))
+                )), None)
                 if duplicate:
                     context.user_data["pending_account_update"] = {**values, "existing_id": duplicate.id}
                     return await query.message.reply_text(
