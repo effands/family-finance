@@ -45,3 +45,4 @@ def test_tambahkan_bank_sentence_is_account_request():
     fields = extract_account_fields(text)
     assert fields["provider"] == "BANK RAYA"
     assert fields["account_identifier"] == "001001627681318"
+    assert fields["holder_name"] == "efendi"

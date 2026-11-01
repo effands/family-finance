@@ -19,7 +19,7 @@ def classify_finance_intent(text: str) -> str:
 
 def account_request_summary(text: str) -> str:
     value = " ".join((text or "").split())
-    match = re.search(r"(?:bank|rekening|akun)\s+(?:baru\s+)?([A-Za-z0-9][A-Za-z0-9 ._-]{1,40}?)(?=\s+(?:atas nama|nama|saldo|rp|$))", value, re.I)
+    match = re.search(r"(?:bank|rekening|akun)\s+(?:baru\s+)?(?:yaitu\s+|adalah\s+)?([A-Za-z0-9][A-Za-z0-9 ._-]{1,40}?)(?=\s+(?:atas nama|nama|saldo|rp|no|nomor|norek|rekening|$))", value, re.I)
     account_name = match.group(1).strip() if match else "akun baru"
     return account_name
 
@@ -38,7 +38,7 @@ def extract_account_fields(text: str) -> dict:
     elif "cash" in value or "tunai" in value:
         fields["account_type"] = "cash"
     provider = re.search(r"(?:bank|rekening|akun)\s+(?:baru\s+)?(?:yaitu\s+|adalah\s+)?([A-Za-z][A-Za-z0-9 ._-]{1,40}?)(?=\s+(?:atas nama|nama|saldo|no|nomor|norek|rekening|$))", value, re.I)
-    holder = re.search(r"(?:atas nama|nama pemilik)\s+([A-Za-z][A-Za-z .'-]{1,60}?)(?=\s+(?:saldo|rp|no|nomor|norek|rekening|$))", value, re.I)
+    holder = re.search(r"(?:atas nama|nama pemilik)\s+([A-Za-z][A-Za-z .'-]{1,60}?)(?=\s+(?:saldo|rp|no|nomor|norek|rekening)|$)", value, re.I)
     balance = re.search(r"(?:saldo(?: awal)?|rp)\s*[:=]?\s*([\d.,]+)\s*(?:jt|juta|rb|ribu)?", value, re.I)
     identifier = re.search(r"\b(?:no(?:mor)?\s+rekening|norek|rekening|account\s+id)\s*[:=]?\s*([0-9][0-9 -]{2,30})\b", value, re.I)
     if provider:
