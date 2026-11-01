@@ -255,6 +255,16 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, te
     if parsed.type == "expense" and force_account_id is None:
         accounts = db.list_accounts(chat_id)
         lowered = str(text).casefold()
+        is_transfer = any(token in lowered.split() for token in ("transfer", "trf", "pindah"))
+        if is_transfer and len(accounts) >= 2:
+            context.user_data["pending_transfer"] = {
+                "amount": parsed.amount, "description": parsed.description,
+                "date": parsed.transaction_date.isoformat(), "user_id": str(user.id),
+            }
+            balances = {item.account_id: item.balance for item in wealth_ledger.get_account_balances(chat_id, include_archived=False)}
+            rows = [[InlineKeyboardButton(f"🏦 {a.name} - {a.holder_name} · {format_rupiah(balances.get(a.id, 0))}", callback_data=f"transfer:source:{a.id}")] for a in accounts if a.id in balances]
+            rows.append([InlineKeyboardButton("❌ Batalkan", callback_data="transfer:cancel")])
+            return await reply.reply_text("🔁 *Transfer terdeteksi*\nPilih bank/e-wallet sumber dana:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(rows))
         def source_matches(account):
             name = account.name.casefold()
             provider = account.provider.casefold()
@@ -689,6 +699,39 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("pending_transaction_source", None)
         return await message_handler(update, context, text_override=pending["text"], reply_message=query.message, force_account_id=account_id)
 
+    if data.startswith("transfer:"):
+        pending = context.user_data.get("pending_transfer")
+        if data == "transfer:cancel":
+            context.user_data.pop("pending_transfer", None)
+            return await query.edit_message_text("❌ Transfer dibatalkan.")
+        if not pending or pending.get("user_id") != user_id:
+            context.user_data.pop("pending_transfer", None)
+            return await query.edit_message_text("❌ Permintaan transfer sudah kedaluwarsa.")
+        accounts = db.list_accounts(chat_id)
+        balances = {item.account_id: item.balance for item in WealthLedger(db).get_account_balances(chat_id, include_archived=False)}
+        if data.startswith("transfer:source:"):
+            source_id = int(data.rsplit(":", 1)[1])
+            if not db.get_account(source_id, chat_id):
+                return await query.edit_message_text("❌ Sumber dana tidak ditemukan.")
+            pending["source_account_id"] = source_id
+            rows = [[InlineKeyboardButton(f"🏦 {a.name} - {a.holder_name} · {format_rupiah(balances.get(a.id, 0))}", callback_data=f"transfer:destination:{a.id}")] for a in accounts if a.id in balances and a.id != source_id]
+            rows.append([InlineKeyboardButton("❌ Batalkan", callback_data="transfer:cancel")])
+            return await query.edit_message_text("🏦 *Pilih akun tujuan transfer:*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(rows))
+        if data.startswith("transfer:destination:"):
+            destination_id = int(data.rsplit(":", 1)[1])
+            source_id = int(pending.get("source_account_id", 0))
+            if not db.get_account(destination_id, chat_id) or destination_id == source_id:
+                return await query.edit_message_text("❌ Tujuan transfer tidak valid.")
+            try:
+                operation = WealthLedger(db).create_transfer(chat_id, source_id, destination_id, int(pending["amount"]), pending["description"], date.fromisoformat(pending["date"]), user_id, update.effective_user.username or update.effective_user.first_name or "user", idempotency_key=f"transfer:{update.update_id}")
+                context.user_data.pop("pending_transfer", None)
+                summary = WealthLedger(db).get_wealth_summary(chat_id)
+                source = db.get_account(source_id, chat_id)
+                destination = db.get_account(destination_id, chat_id)
+                return await query.edit_message_text(f"✅ *Transfer tersimpan*\nDari: *{source.name}*\nKe: *{destination.name}*\nNominal: *{format_rupiah(pending['amount'])}*\nTotal kekayaan: *{format_rupiah(summary.total_wealth)}*\nRef: `{operation.id[:10]}`", parse_mode="Markdown")
+            except (KeyError, ValueError, WealthError, InsufficientFundsError) as exc:
+                return await query.edit_message_text(f"❌ Transfer ditolak: {exc}")
+
     if data.startswith("wealth:"):
         if data == "wealth:duplicate:update":
             pending = context.user_data.pop("pending_account_update", None)
@@ -816,6 +859,31 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except ValueError:
             context.user_data.pop("pending_receipt", None)
             return await query.edit_message_text("❓ Pratinjau struk tidak valid, silakan kirim ulang.")
+        if data.startswith("receipt:source:"):
+            if pending.get("chat_id") != chat_id or pending.get("user_id") != user_id:
+                context.user_data.pop("pending_receipt", None)
+                return await query.edit_message_text("❌ Pratinjau ini bukan milik Anda.")
+            try:
+                source_id = int(data.rsplit(":", 1)[1])
+                source = db.get_account(source_id, chat_id)
+                if not source:
+                    raise WealthError("Akun sumber tidak ditemukan")
+                ledger = WealthLedger(db)
+                operation = ledger.create_expense(
+                    chat_id, source.id, int(pending["amount"]), pending["description"],
+                    pending["category"], date.fromisoformat(pending["date"]), user_id,
+                    pending["username"], idempotency_key=f"receipt:{pending.get('pending_at')}:{source.id}",
+                )
+                summary = ledger.get_wealth_summary(chat_id)
+                context.user_data.pop("pending_receipt", None)
+                return await query.edit_message_text(
+                    f"✅ *Mutasi struk tersimpan*\nSumber dana: *{source.name}*\n"
+                    f"{pending['description']}: *{format_rupiah(pending['amount'])}*\n"
+                    f"Saldo total: *{format_rupiah(summary.total_wealth)}*\nRef: `{operation.id[:10]}`",
+                    parse_mode="Markdown",
+                )
+            except (KeyError, ValueError, WealthError, InsufficientFundsError) as exc:
+                return await query.edit_message_text(f"❌ Struk tidak disimpan: {exc}")
         if data == "receipt:cancel":
             context.user_data.pop("pending_receipt", None)
             return await query.edit_message_text("❌ Pencatatan struk belanja dibatalkan.")
@@ -829,6 +897,14 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.user_data.pop("pending_receipt", None)
                 return await query.edit_message_text("❌ Pratinjau ini bukan milik Anda atau bukan dari grup ini.")
             tx_type = "income" if pending.get("direction") == "in" or (pending.get("direction") is None and pending.get("category") == "Pemasukan") else "expense"
+            if tx_type == "expense":
+                accounts = db.list_accounts(chat_id)
+                balances = {item.account_id: item.balance for item in WealthLedger(db).get_account_balances(chat_id, include_archived=False)}
+                rows = [[InlineKeyboardButton(f"🏦 {a.name} - {a.holder_name} · {format_rupiah(balances.get(a.id, 0))}", callback_data=f"receipt:source:{a.id}")] for a in accounts if a.id in balances]
+                if not rows:
+                    return await query.edit_message_text("❌ Belum ada akun sumber dana. Tambahkan bank, cash, atau e-wallet terlebih dahulu.")
+                rows.append([InlineKeyboardButton("❌ Batalkan", callback_data="receipt:cancel")])
+                return await query.edit_message_text("💳 *Pilih sumber dana untuk struk ini:*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(rows))
             saved = db.add_transaction_with_details(
                 Transaction(
                     None,
