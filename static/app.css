@@ -1707,6 +1707,10 @@ body { background-image: none; color: var(--ink-primary); }
 .git-update-checklist strong { margin-bottom: 3px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
 .git-update-checklist strong { color: var(--ink-secondary); }
 .git-update-checklist span { color: var(--ink-muted); overflow-wrap: anywhere; word-break: break-word; }
+.git-update-modal .git-update-checklist > div { display: block !important; padding: 10px 0 !important; border-bottom: 1px solid #e8edf3; line-height: 1.5; }
+.git-update-modal .git-update-checklist > div:last-child { border-bottom: 0; padding-bottom: 0 !important; }
+.git-update-modal .git-update-checklist > div strong { display: block !important; margin-bottom: 4px; }
+.git-update-modal .git-update-checklist > div span { display: block !important; width: 100%; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 .git-update-modal .modal-footer { gap: 9px; padding: 18px 26px 24px; }
 .git-update-modal .modal-footer form { margin: 0; }
 @media (max-width: 560px) {
