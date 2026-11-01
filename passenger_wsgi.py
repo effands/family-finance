@@ -3257,7 +3257,15 @@ def application(environ, start_response):
             if chat_id in settings.allowed_chat_ids:
                 if cq_data.startswith("wealth:"):
                     reply = WEALTH_TELEGRAM_MENU.handle_callback(chat_id, user_id, cq_data, str(update.get("update_id", "")))
-                    if reply.action == "summary":
+                    if reply.action == "account_create":
+                        try:
+                            values = reply.payload
+                            account = FinancialAccount(None, chat_id, values["name"], values["account_type"], values["provider"], values["holder_name"], values["account_identifier"], "IDR", parse_idr_amount(values["opening_balance"]), date.today())
+                            db.create_account(account, idempotency_key=f"telegram-account:{update.get('update_id')}")
+                            reply.text = f"✅ *Akun berhasil ditambahkan*\n\n{account.name}\nSaldo awal: *{format_rupiah(account.opening_balance)}*\nID akun: `{account.id}`"
+                        except (KeyError, ValueError, WealthError) as exc:
+                            reply.text = f"❌ Akun tidak disimpan: {exc}"
+                    elif reply.action == "summary":
                         summary = WealthLedger(db).get_wealth_summary(chat_id)
                         reply.text = f"📊 *RINGKASAN KEUANGAN*\n\n• Total kekayaan: *{format_rupiah(summary.total_wealth)}*\n• Aset likuid: *{format_rupiah(summary.liquid_assets)}*\n• Investasi: *{format_rupiah(summary.investments)}*\n• Cash: *{format_rupiah(summary.cash)}*"
                     elif reply.action == "accounts":

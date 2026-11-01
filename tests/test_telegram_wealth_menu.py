@@ -38,3 +38,25 @@ def test_callback_is_safe_to_repeat():
     second = menu.handle_callback("chat-1", "user-1", "wealth:accounts")
     assert first.text == second.text
     assert first.keyboard == second.keyboard
+
+
+def test_add_account_flow_collects_fields_and_requires_confirmation():
+    menu = WealthTelegramMenu()
+    menu.handle_callback("chat-1", "user-1", "wealth:account:add")
+    values = ["Mandiri Operasional", "bank", "Bank Mandiri", "Keluarga", "1234", "100000000"]
+    reply = None
+    for value in values:
+        reply = menu.handle_text("chat-1", "user-1", value)
+    assert reply.action == "confirm"
+    assert reply.payload["name"] == "Mandiri Operasional"
+    assert "✅ Konfirmasi" in [button["text"] for row in reply.keyboard["inline_keyboard"] for button in row]
+
+
+def test_confirm_callback_returns_account_create_action():
+    menu = WealthTelegramMenu()
+    menu.handle_callback("chat-1", "user-1", "wealth:account:add")
+    for value in ["GoPay", "ewallet", "GoPay", "Keluarga", "0812", "500000"]:
+        menu.handle_text("chat-1", "user-1", value)
+    reply = menu.handle_callback("chat-1", "user-1", "wealth:confirm")
+    assert reply.action == "account_create"
+    assert reply.payload["account_type"] == "ewallet"
