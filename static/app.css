@@ -1751,6 +1751,10 @@ body:has(.settings-center-page) { background-image: radial-gradient(circle at 7%
 .dashboard-center-page .metric-card:nth-child(2) { background: linear-gradient(145deg, rgba(255,241,244,.96), rgba(255,255,255,.72)); border-top-color: #fb7185 !important; }
 .dashboard-center-page .metric-card:nth-child(3) { background: linear-gradient(145deg, rgba(239,243,255,.96), rgba(255,255,255,.72)); border-top-color: #818cf8 !important; }
 .dashboard-center-page .metric-card:nth-child(4) { background: linear-gradient(145deg, rgba(255,248,230,.96), rgba(255,255,255,.72)); border-top-color: #f5b942 !important; }
+.dashboard-center-page .metric-card:nth-child(1) .metric-value { color: #078b68 !important; }
+.dashboard-center-page .metric-card:nth-child(2) .metric-value { color: #d94461 !important; }
+.dashboard-center-page .metric-card:nth-child(3) .metric-value { color: #5865d8 !important; }
+.dashboard-center-page .metric-card:nth-child(4) .metric-value { color: #c7830b !important; }
 .dashboard-center-page .metric-card .metric-value { text-shadow: 0 2px 12px rgba(71,85,105,.08); }
 .wealth-center-page .metric-card,
 .wealth-center-page .panel,
