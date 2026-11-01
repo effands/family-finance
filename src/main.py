@@ -146,6 +146,16 @@ async def menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ai_request = await asyncio.to_thread(interpret_request, text, settings.gemini_api_keys, settings.gemini_model, context.application.bot_data["gemini_pool"])
             if ai_request["intent"] == "account_add":
                 values = {key: ai_request[key] for key in ("name", "account_type", "provider", "holder_name", "account_identifier", "opening_balance") if ai_request.get(key) not in ("", None)}
+                # Explicit names/numbers in the user's sentence take precedence over
+                # a malformed field mapping returned by the model.
+                values.update(extract_account_fields(text))
+                # Gemini may occasionally place a provider/name into the balance field.
+                # Do not let that reach the confirmation screen; ask for the balance again.
+                if "opening_balance" in values:
+                    try:
+                        parse_idr_amount(values["opening_balance"], allow_zero=True)
+                    except (TypeError, ValueError, WealthError):
+                        values.pop("opening_balance", None)
                 reply = context.application.bot_data["wealth_menu"].begin_account_request(str(update.effective_chat.id), str(update.effective_user.id), values)
                 return await update.message.reply_text("🏦 Tambah akun\n\n" + reply.text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(reply.keyboard["inline_keyboard"]))
             if ai_request["intent"] == "question" and ai_request["question"]:

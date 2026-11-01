@@ -26,23 +26,26 @@ def account_request_summary(text: str) -> str:
 
 def extract_account_fields(text: str) -> dict:
     value = " ".join((text or "").split())
+    normalized = value.casefold()
     fields = {"account_type": "bank"}
-    if any(word in value for word in ("ewallet", "e-wallet", "gopay", "dana", "shopeepay", "ovo")):
+    if any(word in normalized for word in ("ewallet", "e-wallet", "gopay", "dana", "shopeepay", "ovo")):
         fields["account_type"] = "ewallet"
-    elif any(word in value for word in ("crypto", "bitcoin", "ethereum")):
+    elif any(word in normalized for word in ("crypto", "bitcoin", "ethereum")):
         fields["account_type"] = "investment"
-    elif "sbn" in value:
+    elif "sbn" in normalized:
         fields["account_type"] = "investment"
-    elif any(word in value for word in ("saham", "reksa dana", "emas", "investasi")):
+    elif any(word in normalized for word in ("saham", "reksa dana", "emas", "investasi")):
         fields["account_type"] = "investment"
-    elif "cash" in value or "tunai" in value:
+    elif "cash" in normalized or "tunai" in normalized:
         fields["account_type"] = "cash"
     provider = re.search(r"(?:bank|rekening|akun)\s+(?:baru\s+)?(?:yaitu\s+|adalah\s+)?([A-Za-z][A-Za-z0-9 ._-]{1,40}?)(?=\s+(?:atas nama|nama|saldo|no|nomor|norek|rekening|$))", value, re.I)
+    if not provider:
+        provider = re.search(r"(?:tambahkan|tambah|input|add)\s+(?:akun\s+)?(dana|gopay|ovo|shopeepay|shopee\s*pay|linkaja|jenius|paypal)\b", value, re.I)
     holder = re.search(r"(?:atas nama|nama pemilik)\s+([A-Za-z][A-Za-z .'-]{1,60}?)(?=\s+(?:saldo|rp|no|nomor|norek|rekening)|$)", value, re.I)
     balance = re.search(r"(?:saldo(?: awal)?|rp)\s*[:=]?\s*([\d.,]+)\s*(?:jt|juta|rb|ribu)?", value, re.I)
     identifier = re.search(r"\b(?:no(?:mor)?\s+rekening|norek|rekening|account\s+id)\s*[:=]?\s*([0-9][0-9 -]{2,30})\b", value, re.I)
     if provider:
-        fields["provider"] = provider.group(1).strip()
+        fields["provider"] = re.sub(r"\s+", " ", provider.group(1).strip())
         fields["name"] = fields["provider"]
     if holder:
         fields["holder_name"] = holder.group(1).strip()

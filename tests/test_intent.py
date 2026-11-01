@@ -46,3 +46,12 @@ def test_tambahkan_bank_sentence_is_account_request():
     assert fields["provider"] == "BANK RAYA"
     assert fields["account_identifier"] == "001001627681318"
     assert fields["holder_name"] == "efendi"
+
+
+def test_explicit_dana_provider_is_extracted_from_add_sentence():
+    fields = extract_account_fields("tambahkan DANA saldo 128.000 atas nama EFENDI")
+    assert fields["account_type"] == "ewallet"
+    assert fields["provider"] == "DANA"
+    assert fields["name"] == "DANA"
+    assert fields["holder_name"] == "EFENDI"
+    assert fields["opening_balance"] == "128000"
