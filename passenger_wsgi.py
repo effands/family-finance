@@ -567,7 +567,7 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
           </td>
         </tr>""")
 
-    categories_table_html = "".join(cat_rows)
+    categories_table_html = "".join(cat_rows) or "<tr><td colspan='6'><div class='empty-state-box' style='padding:24px 16px; text-align:center;'>Belum ada kategori. Muat kategori standar atau tambahkan kategori baru.</div></td></tr>"
 
     if gemini_active:
         gemini_status_html = f"""<div class="status-callout active">
@@ -1126,7 +1126,7 @@ def _render_backup_page(db: Database, chat_id: str, csrf_token: str, toast: str 
             <a class='header-nav-link active' href='/keuangan/backup'>{_svg_icon('archive')} Backup</a>
             <a class='header-nav-link' href='/keuangan/settings'>{_svg_icon('settings')} Pengaturan</a>
           </nav>
-          <a class='btn btn-ghost' href='/logout'>{_svg_icon('logout')} Keluar</a>
+          <a class='btn btn-ghost' href='/keuangan/logout'>{_svg_icon('logout')} Keluar</a>
         </div>
       </header>
 
@@ -1321,7 +1321,7 @@ def _render_wealth_page(db: Database, chat_id: str, csrf_token: str, toast_html:
             <a class='header-nav-link' href='/keuangan/settings'>{_svg_icon('settings')} Pengaturan</a>
           </nav>
           <a class='btn btn-secondary' href='/keuangan/wealth/export.csv'>{_svg_icon('download')} Unduh CSV</a>
-          <a class='btn btn-ghost' href='/logout'>{_svg_icon('logout')} Keluar</a>
+          <a class='btn btn-ghost' href='/keuangan/logout'>{_svg_icon('logout')} Keluar</a>
         </div>
       </header>
 
@@ -1793,8 +1793,11 @@ def _dashboard_response(environ, start_response):
 
     if path.endswith("/reports") and environ.get("REQUEST_METHOD") == "GET":
         report_type = query.get("type", ["cashflow"])[0]
-        start = date.fromisoformat(query["start"][0]) if query.get("start") else None
-        end = date.fromisoformat(query["end"][0]) if query.get("end") else None
+        try:
+            start = date.fromisoformat(query["start"][0]) if query.get("start") else None
+            end = date.fromisoformat(query["end"][0]) if query.get("end") else None
+        except ValueError:
+            start = end = None
         report = build_professional_report(db, chat_id, report_type, start, end)
         start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
         return [render_report_html(report).encode("utf-8")]
@@ -3088,7 +3091,10 @@ window.addEventListener('DOMContentLoaded', () => {{
   try {{
     const rawData = JSON.parse(document.getElementById('chart-data').textContent);
     const ctxBar = document.getElementById('cashflowBarChart');
-    if (ctxBar && window.Chart) {{
+    if (ctxBar && Number(rawData.income) === 0 && Number(rawData.expense) === 0) {{
+      ctxBar.replaceWith(Object.assign(document.createElement('div'), {{ className: 'empty-state-box', textContent: 'Belum ada data arus kas pada periode ini.' }}));
+    }}
+    if (ctxBar && window.Chart && (Number(rawData.income) !== 0 || Number(rawData.expense) !== 0)) {{
       new Chart(ctxBar, {{
         type: 'bar',
         data: {{
@@ -3232,8 +3238,8 @@ def application(environ, start_response):
         return _dashboard_response(environ, start_response)
 
     if environ.get("REQUEST_METHOD") == "GET":
-        payload = b"family-finance bot is online"
-        start_response("200 OK", [("Content-Type", "text/plain"), ("Content-Length", str(len(payload)))])
+        payload = b"Halaman tidak ditemukan"
+        start_response("404 Not Found", [("Content-Type", "text/plain; charset=utf-8"), ("Content-Length", str(len(payload)))])
         return [payload]
 
     # Process Telegram Webhook Updates
