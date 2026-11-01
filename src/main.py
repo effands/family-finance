@@ -708,7 +708,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif reply.action == "account_create":
             try:
                 values = reply.payload
-                account = FinancialAccount(None, chat_id, values["name"], values["account_type"], values["provider"], values["holder_name"], values["account_identifier"], "IDR", int(values["opening_balance"].replace(".", "").replace(",", "")), date.today())
+                account = FinancialAccount(None, chat_id, values["name"], values["account_type"], values["provider"], values["holder_name"], values["account_identifier"], "IDR", parse_idr_amount(values["opening_balance"], allow_zero=True), date.today())
                 normalized = lambda value: " ".join(str(value).casefold().split())
                 duplicate = next((item for item in db.list_accounts(chat_id) if (values.get("account_identifier") and normalized(item.account_identifier) == normalized(values["account_identifier"])) or (normalized(item.name) == normalized(values["name"]) and normalized(item.provider) == normalized(values["provider"]))), None)
                 if duplicate:
