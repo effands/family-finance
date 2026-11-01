@@ -77,6 +77,17 @@ def allowed(update: Update, settings) -> bool:
     return str(update.effective_chat.id) in settings.allowed_chat_ids
 
 
+def _explicit_payment_hint(text: str) -> str | None:
+    """Return a payment method explicitly written by the user."""
+    lowered = str(text or "").casefold()
+    if any(token in lowered.split() for token in ("cash", "tunai")):
+        return "cash"
+    for provider in ("dana", "gopay", "ovo", "shopeepay", "qris"):
+        if provider in lowered:
+            return provider
+    return None
+
+
 def get_command_inline_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
@@ -266,6 +277,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, te
     if parsed.type == "expense" and force_account_id is None:
         accounts = db.list_accounts(chat_id)
         lowered = str(text).casefold()
+        explicit_payment = _explicit_payment_hint(text)
         is_transfer = any(token in lowered.split() for token in ("transfer", "trf", "pindah"))
         if is_transfer and len(accounts) >= 2:
             context.user_data["pending_transfer"] = {
@@ -283,13 +295,22 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, te
             direct = name in lowered or provider in lowered or (account.account_type == "cash" and "cash" in lowered)
             owner_pair = holder and holder in lowered and (name in lowered or provider in lowered)
             return direct or owner_pair
-        hinted = next((a for a in accounts if source_matches(a)), None)
-        if hinted is None and accounts:
+        # Never fall through to the default account when the user explicitly
+        # names a payment method. A missing Cash/DANA/GoPay/OVO account must
+        # be confirmed instead of silently charging another wallet.
+        if explicit_payment:
+            hinted = next((a for a in accounts if source_matches(a)), None)
+        else:
+            hinted = next((a for a in accounts if source_matches(a)), None)
+        if hinted is None:
+            if not accounts:
+                return await reply.reply_text("💳 Akun sumber belum ada. Tambahkan akun Cash, DANA, GoPay, OVO, atau bank terlebih dahulu.")
             context.user_data["pending_transaction_source"] = {"text": text}
             balances = {item.account_id: item.balance for item in WealthLedger(db).get_account_balances(chat_id, include_archived=False)}
             rows = [[InlineKeyboardButton(f"🏦 {a.name} - {a.holder_name} · {format_rupiah(balances.get(a.id, 0))}", callback_data=f"txsource:{a.id}")] for a in accounts if a.id in balances]
             rows.append([InlineKeyboardButton("❌ Batalkan", callback_data="txsource:cancel")])
-            return await reply.reply_text("💳 Bayar dari akun mana?", reply_markup=InlineKeyboardMarkup(rows))
+            prompt = f"💳 Metode {explicit_payment.upper()} disebut. Pilih akun sumber:" if explicit_payment else "💳 Bayar dari akun mana?"
+            return await reply.reply_text(prompt, reply_markup=InlineKeyboardMarkup(rows))
     if wealth_account:
         try:
             if parsed.type == "income":
