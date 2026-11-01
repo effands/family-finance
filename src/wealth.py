@@ -267,8 +267,16 @@ class WealthLedger:
     def list_operations(self, chat_id, limit=100):
         with self.db._conn() as conn:
             rows = conn.execute("""SELECT o.*, COUNT(e.id) AS entry_count,
-                COALESCE(SUM(CASE WHEN e.direction='debit' THEN e.amount ELSE 0 END),0) AS debits
+                COALESCE(SUM(CASE WHEN e.direction='debit' THEN e.amount ELSE 0 END),0) AS debits,
+                MAX(CASE WHEN e.direction='debit' THEN a.name END) AS source_account,
+                MAX(CASE WHEN e.direction='debit' THEN a.provider END) AS source_provider,
+                MAX(CASE WHEN e.direction='debit' THEN a.account_identifier END) AS source_identifier,
+                MAX(CASE WHEN e.direction='credit' THEN a.name END) AS destination_account,
+                MAX(CASE WHEN e.direction='credit' THEN a.provider END) AS destination_provider,
+                MAX(CASE WHEN e.direction='credit' THEN a.holder_name END) AS destination_holder,
+                MAX(CASE WHEN e.direction='credit' THEN a.account_identifier END) AS destination_identifier
                 FROM ledger_operations o LEFT JOIN ledger_entries e ON e.operation_id=o.id
+                LEFT JOIN financial_accounts a ON a.id=e.account_id
                 WHERE o.chat_id=? GROUP BY o.id ORDER BY o.transaction_date DESC, o.created_at DESC LIMIT ?""", (chat_id, limit)).fetchall()
             return [dict(r) for r in rows]
 

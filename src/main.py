@@ -728,7 +728,9 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 summary = WealthLedger(db).get_wealth_summary(chat_id)
                 source = db.get_account(source_id, chat_id)
                 destination = db.get_account(destination_id, chat_id)
-                return await query.edit_message_text(f"✅ *Transfer tersimpan*\nDari: *{source.name}*\nKe: *{destination.name}*\nNominal: *{format_rupiah(pending['amount'])}*\nTotal kekayaan: *{format_rupiah(summary.total_wealth)}*\nRef: `{operation.id[:10]}`", parse_mode="Markdown")
+                recipient_id = destination.account_identifier or "-"
+                recipient_id = ("•••• " + recipient_id[-4:]) if len(recipient_id) > 4 else recipient_id
+                return await query.edit_message_text(f"✅ *Transfer tersimpan*\n\nDari: *{source.name}*\nKe: *{destination.name}*\nBank/provider: *{destination.provider}*\nPemilik: *{destination.holder_name}*\nRekening/ID: `{recipient_id}`\nNominal: *{format_rupiah(pending['amount'])}*\n\nTotal kekayaan: *{format_rupiah(summary.total_wealth)}*\nRef: `{operation.id[:10]}`", parse_mode="Markdown")
             except (KeyError, ValueError, WealthError, InsufficientFundsError) as exc:
                 return await query.edit_message_text(f"❌ Transfer ditolak: {exc}")
 
@@ -843,7 +845,14 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply.text = "\n".join(lines)
         elif reply.action == "reports":
             rows = WealthLedger(db).list_operations(chat_id, limit=10)
-            reply.text = "📋 *MUTASI TERAKHIR*\n\n" + ("\n".join(f"• {row['description']} — {row['operation_type']} ({row['transaction_date']})" for row in rows) if rows else "Belum ada mutasi.")
+            def operation_line(row):
+                detail = f"Dari {row.get('source_account')} → {row.get('destination_account')}" if row.get('destination_account') else f"Sumber: {row.get('source_account')}"
+                recipient = row.get('destination_identifier')
+                if recipient:
+                    recipient = ("•••• " + recipient[-4:]) if len(recipient) > 4 else recipient
+                    detail += f" ({recipient})"
+                return f"• {row['description']} — {row['operation_type']} ({row['transaction_date']})\n  {detail} · {format_rupiah(row['debits'])}"
+            reply.text = "📋 *MUTASI TERAKHIR*\n\n" + ("\n\n".join(operation_line(row) for row in rows) if rows else "Belum ada mutasi.")
         return await query.message.reply_text(reply.text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(reply.keyboard["inline_keyboard"]))
 
     # Receipt callbacks
