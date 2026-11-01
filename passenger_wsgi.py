@@ -333,16 +333,18 @@ def _safe_csv_value(value):
 def _run_git_update(base_dir):
     """Pull the checked-out branch safely, preserving a database snapshot."""
     branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=base_dir, stderr=subprocess.STDOUT, text=True, timeout=5).strip()
-    if not branch or branch == "HEAD":
+    upstream = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], cwd=base_dir, stderr=subprocess.STDOUT, text=True, timeout=5).strip()
+    if not branch or branch == "HEAD" or not upstream or "/" not in upstream:
         raise RuntimeError("Branch production tidak terdeteksi")
+    remote, remote_branch = upstream.split("/", 1)
     database_path = load_settings().database_path
     backup_path = f"{database_path}.pre-git-update-{date.today().isoformat()}"
     if os.path.exists(database_path):
         shutil.copy2(database_path, backup_path)
-    fetch = subprocess.run(["git", "fetch", "origin", branch, "--prune"], cwd=base_dir, capture_output=True, text=True, timeout=45)
+    fetch = subprocess.run(["git", "fetch", remote, remote_branch, "--prune"], cwd=base_dir, capture_output=True, text=True, timeout=45)
     if fetch.returncode != 0:
         raise RuntimeError((fetch.stderr or fetch.stdout or "git fetch gagal").strip()[-500:])
-    pull = subprocess.run(["git", "pull", "--ff-only", "origin", branch], cwd=base_dir, capture_output=True, text=True, timeout=45)
+    pull = subprocess.run(["git", "pull", "--ff-only", remote, remote_branch], cwd=base_dir, capture_output=True, text=True, timeout=45)
     output = ((pull.stdout or "") + "\n" + (pull.stderr or "")).strip()
     if pull.returncode != 0:
         raise RuntimeError(output[-500:] or "git pull gagal")
@@ -354,7 +356,7 @@ def _run_git_update(base_dir):
     with open(restart_path, "w", encoding="utf-8") as restart_file:
         restart_file.write(str(time.time()))
     commit = subprocess.check_output(["git", "log", "-1", "--format=%h - %s"], cwd=base_dir, stderr=subprocess.STDOUT, text=True, timeout=5).strip()
-    return branch, commit, backup_path, output[-500:]
+    return f"{branch} ← {upstream}", commit, backup_path, output[-500:]
 
 
 def _summary(rows):
@@ -1213,71 +1215,363 @@ def _render_wealth_page(db: Database, chat_id: str, csrf_token: str, toast_html:
     else:
         p_liq = p_inv = p_csh = 0
 
-    allocation_bar = f"""
-    <div class='panel settings-section-card' style='margin-bottom: 24px; padding: 20px 24px;'>
-      <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;'>
-        <div style='font-size: 13.5px; font-weight: 700; color: var(--ink-primary);'>Alokasi Portofolio Kekayaan</div>
-        <div style='display: flex; gap: 14px; font-size: 12px; font-weight: 600;'>
-          <span style='color: var(--income-main);'>● Likuid: {p_liq}%</span>
-          <span style='color: #7c3aed;'>● Investasi: {p_inv}%</span>
-          <span style='color: #d97706;'>● Kas: {p_csh}%</span>
-        </div>
-      </div>
-      <div style='width: 100%; height: 10px; background: #e2e8f0; border-radius: 9999px; overflow: hidden; display: flex;'>
-        <div style='width: {p_liq}%; background: linear-gradient(90deg, #059669, #34d399); transition: width 0.5s ease;' title='Likuid: {format_rupiah(summary.liquid_assets)}'></div>
-        <div style='width: {p_inv}%; background: linear-gradient(90deg, #7c3aed, #a78bfa); transition: width 0.5s ease;' title='Investasi: {format_rupiah(summary.investments)}'></div>
-        <div style='width: {p_csh}%; background: linear-gradient(90deg, #d97706, #fbbf24); transition: width 0.5s ease;' title='Cash di tangan: {format_rupiah(summary.cash)}'></div>
-      </div>
-    </div>
-    """
     account_rows = "".join(
-        f"""<tr><td><strong>{html.escape(a.name)}</strong><div class='setting-help-text'>{html.escape(a.provider or a.account_type.title())}</div></td>
-        <td>{html.escape(a.account_type.title())}</td><td>{html.escape(_mask_identifier(a.account_identifier))}</td>
-        <td class='tx-amount'>{format_rupiah(balances[a.id].balance if a.id in balances else a.opening_balance)}</td>
-        <td>{'Aktif' if a.is_active else 'Diarsipkan'}{' <form method="post" action="/keuangan/wealth/account/archive" style="display:inline"><input type="hidden" name="csrf_token" value="' + csrf_token + '"><input type="hidden" name="account_id" value="' + str(a.id) + '"><button class="btn btn-ghost" type="submit">Arsipkan</button></form>' if a.is_active else ''}</td></tr>"""
+        f"""<tr>
+          <td>
+            <div style="font-weight: 700; color: var(--ink-primary); font-size: 14px;">{html.escape(a.name)}</div>
+            <div style="font-size: 11.5px; color: var(--ink-muted); margin-top: 2px;">{html.escape(a.provider or a.account_type.title())} &bull; Pemilik: {html.escape(a.holder_name or 'Keluarga')}</div>
+          </td>
+          <td><span class="badge badge-{a.account_type}">{html.escape(a.account_type.title())}</span></td>
+          <td style="font-family: var(--font-mono); font-size: 13px; color: var(--ink-secondary);">{html.escape(_mask_identifier(a.account_identifier))}</td>
+          <td class="tx-amount text-right" style="font-family: var(--font-mono); font-size: 14.5px; font-weight: 700; color: var(--ink-primary);">{format_rupiah(balances[a.id].balance if a.id in balances else a.opening_balance)}</td>
+          <td>
+            <span class="badge {'badge-income' if a.is_active else 'badge-neutral'}">{'Aktif' if a.is_active else 'Diarsipkan'}</span>
+            {'<form method="post" action="/keuangan/wealth/account/archive" style="display:inline; margin-left: 8px;"><input type="hidden" name="csrf_token" value="' + csrf_token + '"><input type="hidden" name="account_id" value="' + str(a.id) + '"><button class="btn btn-ghost btn-sm" type="submit" style="padding: 3px 8px; font-size: 11px;">Arsipkan</button></form>' if a.is_active else ''}
+          </td>
+        </tr>"""
         for a in accounts
-    ) or "<tr><td colspan='5'><div class='empty-state-box'><div class='empty-state-title'>Belum ada akun keuangan</div><div class='empty-state-desc'>Tambahkan rekening bank, e-wallet, cash, atau investasi untuk mulai menghitung total kekayaan.</div></div></td></tr>"
-    active_options = "".join(f"<option value='{a.id}'>{html.escape(a.name)} — {html.escape(a.provider)}</option>" for a in accounts if a.is_active)
+    ) or "<tr><td colspan='5'><div class='empty-state-box' style='padding: 32px 16px; text-align: center;'><div class='empty-state-title' style='font-weight: 700; font-size: 15px;'>Belum ada akun keuangan</div><div class='empty-state-desc' style='color: var(--ink-muted); font-size: 13px; margin-top: 4px;'>Tambahkan rekening bank, e-wallet, cash, atau investasi untuk mulai menghitung total kekayaan.</div></div></td></tr>"
+
+    active_options = "".join(f"<option value='{a.id}'>{html.escape(a.name)} &mdash; {html.escape(a.provider)}</option>" for a in accounts if a.is_active)
+
     def _operation_row(r):
         if r["reversed_operation_id"]:
-            action_html = "Dibatalkan"
+            action_html = "<span class='badge badge-neutral' style='font-size: 11px;'>Dibatalkan</span>"
         else:
             action_html = (
-                '<form method="post" action="/keuangan/wealth/operation/reverse">'
+                '<form method="post" action="/keuangan/wealth/operation/reverse" style="display: flex; gap: 6px; align-items: center;">'
                 '<input type="hidden" name="csrf_token" value="' + csrf_token + '">'
                 '<input type="hidden" name="operation_id" value="' + html.escape(r["id"]) + '">'
-                '<input class="form-control" name="reason" placeholder="Alasan" required>'
-                '<button class="btn btn-ghost" type="submit">Batalkan</button></form>'
+                '<input class="form-control" style="height: 30px; font-size: 12px; padding: 4px 8px; width: 130px;" name="reason" placeholder="Alasan pembatalan" required>'
+                '<button class="btn btn-ghost btn-sm" type="submit" style="padding: 3px 8px; font-size: 11px;">Batalkan</button></form>'
             )
         return (
-            f"<tr><td>{html.escape(r['transaction_date'])}</td>"
-            f"<td><strong>{html.escape(r['operation_type'])}</strong></td>"
-            f"<td>{html.escape(r['description'])}</td><td>{format_rupiah(r['debits'])}</td>"
-            f"<td>{action_html}</td></tr>"
+            f"<tr>"
+            f"<td style='font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-secondary);'>{html.escape(r['transaction_date'])}</td>"
+            f"<td><span class='badge badge-neutral' style='font-weight: 700;'>{html.escape(r['operation_type'])}</span></td>"
+            f"<td style='color: var(--ink-primary); font-weight: 500;'>{html.escape(r['description'])}</td>"
+            f"<td class='tx-amount text-right' style='font-family: var(--font-mono); font-size: 13.5px; font-weight: 700; color: var(--ink-primary);'>{format_rupiah(r['debits'])}</td>"
+            f"<td>{action_html}</td>"
+            f"</tr>"
         )
 
-    operation_rows = "".join(_operation_row(r) for r in ledger.list_operations(chat_id)) or "<tr><td colspan='5'><div class='empty-state-box'>Belum ada mutasi wealth.</div></td></tr>"
+    operation_rows = "".join(_operation_row(r) for r in ledger.list_operations(chat_id)) or "<tr><td colspan='5'><div class='empty-state-box' style='padding: 28px 16px; text-align: center; color: var(--ink-muted);'>Belum ada mutasi wealth tercatat.</div></td></tr>"
+
     return f"""<main class='page-shell'>
-      <header class='topbar'><a class='brand-lockup' href='/keuangan/dashboard'><div class='brand-mark'>FF</div><div class='brand-info'><span class='brand-badge'><span class='status-dot'></span>Wealth Center</span><h1 class='brand-title'>Total Kekayaan</h1><span class='brand-desc'>Saldo tercatat lintas bank, e-wallet, cash, dan investasi</span></div></a>
-      <div class='actions'><nav class='header-nav-menu'><a class='header-nav-link' href='/keuangan/dashboard'>{_svg_icon('layout-dashboard')} Dasbor</a><a class='header-nav-link active' href='/keuangan/wealth'>{_svg_icon('wallet')} Kekayaan</a><a class='header-nav-link' href='/keuangan/backup'>Backup</a><a class='header-nav-link' href='/keuangan/settings'>{_svg_icon('settings')} Pengaturan</a></nav><a class='btn btn-secondary' href='/keuangan/wealth/export.csv'>Unduh CSV</a><a class='btn btn-ghost' href='/logout'>{_svg_icon('logout')} Keluar</a></div></header>
+      <header class='topbar'>
+        <a class='brand-lockup' href='/keuangan/dashboard'>
+          <div class='brand-mark'>FF</div>
+          <div class='brand-info'>
+            <span class='brand-badge'><span class='status-dot'></span>Pusat Aset & Likuiditas</span>
+            <h1 class='brand-title'>Wealth Center</h1>
+            <span class='brand-desc'>Monitoring portofolio saldo lintas bank, e-wallet, kas fisik, dan instrumen investasi</span>
+          </div>
+        </a>
+        <div class='actions'>
+          <nav class='header-nav-menu'>
+            <a class='header-nav-link' href='/keuangan/dashboard'>{_svg_icon('layout-dashboard')} Dasbor</a>
+            <a class='header-nav-link active' href='/keuangan/wealth'>{_svg_icon('wallet')} Kekayaan</a>
+            <a class='header-nav-link' href='/keuangan/backup'>{_svg_icon('archive')} Backup</a>
+            <a class='header-nav-link' href='/keuangan/settings'>{_svg_icon('settings')} Pengaturan</a>
+          </nav>
+          <a class='btn btn-secondary' href='/keuangan/wealth/export.csv'>{_svg_icon('download')} Unduh CSV</a>
+          <a class='btn btn-ghost' href='/logout'>{_svg_icon('logout')} Keluar</a>
+        </div>
+      </header>
+
       {toast_html}
-      <section class='metric-grid'>
-        <article class='metric-card'><div class='metric-label'>Total Kekayaan</div><div class='metric-value val-balance'>{format_rupiah(summary.total_wealth)}</div><div class='metric-footer'><span>Semua akun aktif</span><span class='metric-tag tag-neutral'>IDR</span></div></article>
-        <article class='metric-card'><div class='metric-label'>Aset Likuid</div><div class='metric-value val-income'>{format_rupiah(summary.liquid_assets)}</div><div class='metric-footer'><span>Bank + e-wallet + cash</span></div></article>
-        <article class='metric-card'><div class='metric-label'>Investasi</div><div class='metric-value val-stats'>{format_rupiah(summary.investments)}</div><div class='metric-footer'><span>SBN, crypto, saham, aset</span></div></article>
-        <article class='metric-card'><div class='metric-label'>Cash di Tangan</div><div class='metric-value val-balance'>{format_rupiah(summary.cash)}</div><div class='metric-footer'><span>Belum dilaporkan penggunaannya</span></div></article>
+
+      <!-- KPI METRIC CARDS -->
+      <section class='metric-grid' style='margin-bottom: 24px;'>
+        <article class='metric-card' style='position: relative; overflow: hidden; border-top: 3px solid #2563eb;'>
+          <div class='metric-label'>Total Kekayaan</div>
+          <div class='metric-value val-balance' style='font-size: 24px;'>{format_rupiah(summary.total_wealth)}</div>
+          <div class='metric-footer'>
+            <span>Semua akun aktif</span>
+            <span class='metric-tag tag-neutral' style='font-weight: 700;'>IDR KONSOLIDASI</span>
+          </div>
+        </article>
+
+        <article class='metric-card' style='position: relative; overflow: hidden; border-top: 3px solid #059669;'>
+          <div class='metric-label'>Aset Likuid</div>
+          <div class='metric-value val-income' style='font-size: 24px;'>{format_rupiah(summary.liquid_assets)}</div>
+          <div class='metric-footer'>
+            <span>Bank + E-Wallet</span>
+            <span style='color: var(--income-main); font-weight: 700;'>{p_liq}%</span>
+          </div>
+        </article>
+
+        <article class='metric-card' style='position: relative; overflow: hidden; border-top: 3px solid #7c3aed;'>
+          <div class='metric-label'>Investasi</div>
+          <div class='metric-value val-stats' style='font-size: 24px; color: #7c3aed;'>{format_rupiah(summary.investments)}</div>
+          <div class='metric-footer'>
+            <span>SBN, Crypto, Saham</span>
+            <span style='color: #7c3aed; font-weight: 700;'>{p_inv}%</span>
+          </div>
+        </article>
+
+        <article class='metric-card' style='position: relative; overflow: hidden; border-top: 3px solid #d97706;'>
+          <div class='metric-label'>Cash di Tangan</div>
+          <div class='metric-value val-balance' style='font-size: 24px; color: #d97706;'>{format_rupiah(summary.cash)}</div>
+          <div class='metric-footer'>
+            <span>Kas fisik siap pakai</span>
+            <span style='color: #d97706; font-weight: 700;'>{p_csh}%</span>
+          </div>
+        </article>
       </section>
-      {allocation_bar}
-      <section class='panel settings-section-card'><div class='settings-section-header'><div><h2 class='settings-section-title'>Akun Keuangan</h2><p class='settings-section-desc'>Saldo dihitung dari saldo awal dan ledger. Transfer antar akun tidak menggandakan kekayaan.</p></div><a class='btn btn-primary' href='#akun-baru'>{_svg_icon('plus')} Tambah Akun</a></div>
-        <div class='table-responsive'><table class='data-table'><thead><tr><th>Nama Akun</th><th>Jenis</th><th>Identitas</th><th>Saldo Tercatat</th><th>Status</th></tr></thead><tbody>{account_rows}</tbody></table></div>
+
+      <!-- PORTFOLIO ALLOCATION PROGRESS BAR -->
+      <section class='panel settings-section-card' style='margin-bottom: 24px; padding: 20px 24px;'>
+        <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;'>
+          <div>
+            <h2 class='settings-section-title' style='font-size: 16px; margin-bottom: 2px;'>Alokasi Komposisi Portofolio</h2>
+            <p class='settings-section-desc' style='font-size: 12.5px;'>Distribusi aset likuid vs investasi jangka panjang vs uang tunai</p>
+          </div>
+          <div style='display: flex; gap: 16px; font-size: 12px; font-weight: 700;'>
+            <span style='color: #059669; display: flex; align-items: center; gap: 5px;'><span style='width: 8px; height: 8px; border-radius: 50%; background: #059669;'></span> Likuid: {p_liq}%</span>
+            <span style='color: #7c3aed; display: flex; align-items: center; gap: 5px;'><span style='width: 8px; height: 8px; border-radius: 50%; background: #7c3aed;'></span> Investasi: {p_inv}%</span>
+            <span style='color: #d97706; display: flex; align-items: center; gap: 5px;'><span style='width: 8px; height: 8px; border-radius: 50%; background: #d97706;'></span> Kas Fisik: {p_csh}%</span>
+          </div>
+        </div>
+        <div style='width: 100%; height: 12px; background: #e2e8f0; border-radius: 9999px; overflow: hidden; display: flex; box-shadow: inset 0 1px 2px rgba(0,0,0,0.06);'>
+          <div style='width: {p_liq}%; background: linear-gradient(90deg, #059669, #34d399); transition: width 0.6s ease;' title='Likuid: {format_rupiah(summary.liquid_assets)}'></div>
+          <div style='width: {p_inv}%; background: linear-gradient(90deg, #7c3aed, #a78bfa); transition: width 0.6s ease;' title='Investasi: {format_rupiah(summary.investments)}'></div>
+          <div style='width: {p_csh}%; background: linear-gradient(90deg, #d97706, #fbbf24); transition: width 0.6s ease;' title='Cash di tangan: {format_rupiah(summary.cash)}'></div>
+        </div>
       </section>
-      <section class='breakdown-grid'><div class='panel settings-section-card' id='akun-baru'><div class='settings-section-header'><div><h2 class='settings-section-title'>Tambah Akun</h2><p class='settings-section-desc'>Nomor rekening/ID hanya digunakan untuk identifikasi dan ditampilkan tersamarkan.</p></div></div>
-        <form method='post' action='/keuangan/wealth/account/save' class='form-stack'><input type='hidden' name='csrf_token' value='{csrf_token}'><div class='form-group'><label>Nama panggilan</label><input class='form-control' name='name' required placeholder='Mandiri Utama'></div><div class='form-group'><label>Jenis akun</label><select class='form-control' name='account_type'><option value='bank'>Bank</option><option value='ewallet'>E-wallet</option><option value='cash'>Cash</option><option value='investment'>Investasi</option></select></div><div class='form-group'><label>Bank / provider</label><input class='form-control' name='provider' placeholder='Bank Mandiri / DANA / SBN'></div><div class='form-group'><label>Nama pemilik</label><input class='form-control' name='holder_name' placeholder='Keluarga'></div><div class='form-group'><label>Nomor rekening / ID / nomor HP</label><input class='form-control' name='account_identifier'></div><div class='form-group'><label>Saldo awal (IDR)</label><input class='form-control' name='opening_balance' inputmode='numeric' required value='0'></div><div class='form-group'><label>Tanggal saldo awal</label><input class='form-control' type='date' name='opening_balance_date' required value='{date.today().isoformat()}'></div><button class='btn btn-primary' type='submit'>Simpan Akun</button></form>
-      </div><div class='panel settings-section-card'><div class='settings-section-header'><div><h2 class='settings-section-title'>Catat Mutasi</h2><p class='settings-section-desc'>Pilih sumber dana untuk pengeluaran, transfer, dan tarik ATM.</p></div></div><form method='post' action='/keuangan/wealth/operation/create' class='form-stack'><input type='hidden' name='csrf_token' value='{csrf_token}'><div class='form-group'><label>Jenis</label><select class='form-control' name='operation_type'><option value='expense'>Pengeluaran</option><option value='cash_withdrawal'>Tarik tunai ATM</option><option value='transfer'>Transfer antar akun</option></select></div><div class='form-group'><label>Dari akun</label><select class='form-control' name='source_account_id' required>{active_options}</select></div><div class='form-group'><label>Ke akun (untuk transfer/ATM)</label><select class='form-control' name='destination_account_id'><option value=''>— pilih bila diperlukan —</option>{active_options}</select></div><div class='form-group'><label>Nominal (IDR)</label><input class='form-control' name='amount' inputmode='numeric' required></div><div class='form-group'><label>Keterangan</label><input class='form-control' name='description' required placeholder='Belanja / tarik tunai / transfer'></div><button class='btn btn-primary' type='submit'>Catat Mutasi</button></form></div></section>
-      <section class='panel settings-section-card'><div class='settings-section-header'><div><h2 class='settings-section-title'>Rekonsiliasi Saldo</h2><p class='settings-section-desc'>Jika saldo aplikasi berbeda dari saldo nyata, masukkan saldo aktual. Sistem membuat adjustment yang dapat diaudit.</p></div></div><form method='post' action='/keuangan/wealth/reconcile' class='form-stack'><input type='hidden' name='csrf_token' value='{csrf_token}'><div class='form-group'><label>Akun</label><select class='form-control' name='account_id' required>{active_options}</select></div><div class='form-group'><label>Saldo aktual (IDR)</label><input class='form-control' name='actual_balance' inputmode='numeric' required></div><div class='form-group'><label>Alasan</label><input class='form-control' name='reason' required placeholder='Cocokkan mutasi bank'></div><button class='btn btn-secondary' type='submit'>Simpan Rekonsiliasi</button></form></section>
-      <section class='panel settings-section-card'><div class='settings-section-header'><div><h2 class='settings-section-title'>Sumber Dana Default</h2><p class='settings-section-desc'>Dipakai oleh input cepat Telegram bila transaksi tidak menyebut sumber secara eksplisit.</p></div></div><form method='post' action='/keuangan/wealth/default/save' class='form-stack'><input type='hidden' name='csrf_token' value='{csrf_token}'><div class='form-group'><label>Jenis transaksi</label><select class='form-control' name='operation_kind'><option value='expense'>Pengeluaran</option><option value='income'>Pemasukan</option></select></div><div class='form-group'><label>Akun default</label><select class='form-control' name='account_id' required>{active_options}</select></div><button class='btn btn-secondary' type='submit'>Simpan Default</button></form></section>
-      <section class='panel settings-section-card'><div class='settings-section-header'><div><h2 class='settings-section-title'>Riwayat Ledger & Koreksi</h2><p class='settings-section-desc'>Setiap operasi dapat ditelusuri dan dibatalkan dengan reversal; histori asli tidak dihapus.</p></div></div><div class='table-responsive'><table class='data-table'><thead><tr><th>Tanggal</th><th>Jenis</th><th>Keterangan</th><th>Debit</th><th>Aksi</th></tr></thead><tbody>{operation_rows}</tbody></table></div></section>
-      {CREDIT_HTML}</main>"""
+
+      <!-- TABEL DAFTAR AKUN KEUANGAN -->
+      <section class='panel settings-section-card' style='margin-bottom: 24px;'>
+        <div class='settings-section-header' style='display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;'>
+          <div>
+            <h2 class='settings-section-title'>Daftar Akun Keuangan</h2>
+            <p class='settings-section-desc'>Saldo dihitung otomatis dari saldo awal dan pembukuan berpasangan. Mutasi transfer antar akun tidak menggandakan total kekayaan.</p>
+          </div>
+          <a class='btn btn-primary' href='#form-tambah-akun' style='display: inline-flex; align-items: center; gap: 6px;'>{_svg_icon('plus')} Tambah Akun Baru</a>
+        </div>
+        <div class='table-responsive'>
+          <table class='data-table'>
+            <thead>
+              <tr>
+                <th style='width: 28%;'>Nama Akun & Pemilik</th>
+                <th style='width: 16%;'>Jenis Akun</th>
+                <th style='width: 20%;'>Nomor / ID</th>
+                <th style='width: 20%; text-align: right;'>Saldo Tercatat</th>
+                <th style='width: 16%; text-align: center;'>Status & Aksi</th>
+              </tr>
+            </thead>
+            <tbody>{account_rows}</tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- INTERACTIVE GRID: TAMBAH AKUN & CATAT MUTASI -->
+      <section class='breakdown-grid' style='display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 24px; margin-bottom: 24px;'>
+        
+        <!-- CARD 1: TAMBAH AKUN -->
+        <div class='panel settings-section-card' id='form-tambah-akun'>
+          <div class='settings-section-header' style='margin-bottom: 16px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px;'>
+            <div style='display: flex; align-items: center; gap: 10px;'>
+              <div style='width: 32px; height: 32px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center;'>{_svg_icon('wallet')}</div>
+              <div>
+                <h2 class='settings-section-title' style='font-size: 16px;'>Tambah Akun Keuangan</h2>
+                <p class='settings-section-desc' style='font-size: 12px;'>Nomor rekening/ID tersamarkan demi keamanan arsip.</p>
+              </div>
+            </div>
+          </div>
+          <form method='post' action='/keuangan/wealth/account/save' class='form-stack'>
+            <input type='hidden' name='csrf_token' value='{csrf_token}'>
+            <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 12px;'>
+              <div class='form-group'>
+                <label>Nama Akun / Panggilan</label>
+                <input class='form-control' name='name' required placeholder='Contoh: Mandiri Operasional'>
+              </div>
+              <div class='form-group'>
+                <label>Jenis Portofolio</label>
+                <select class='form-control' name='account_type'>
+                  <option value='bank'>Bank (Likuid)</option>
+                  <option value='ewallet'>E-Wallet (Likuid)</option>
+                  <option value='cash'>Cash Fisik</option>
+                  <option value='investment'>Investasi (SBN/Crypto/Emas)</option>
+                </select>
+              </div>
+            </div>
+
+            <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 12px;'>
+              <div class='form-group'>
+                <label>Institusi / Provider</label>
+                <input class='form-control' name='provider' placeholder='Contoh: BCA, GoPay, Bibit'>
+              </div>
+              <div class='form-group'>
+                <label>Nama Pemilik Rekening</label>
+                <input class='form-control' name='holder_name' placeholder='Keluarga / Nama Pengguna'>
+              </div>
+            </div>
+
+            <div class='form-group'>
+              <label>Nomor Rekening / No. HP / Akun ID</label>
+              <input class='form-control' name='account_identifier' placeholder='Hanya 4 digit terakhir yang ditampilkan'>
+            </div>
+
+            <div style='display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px;'>
+              <div class='form-group'>
+                <label>Saldo Awal (Rp)</label>
+                <input class='form-control' name='opening_balance' inputmode='numeric' required value='0' style='font-family: var(--font-mono); font-weight: 600;'>
+              </div>
+              <div class='form-group'>
+                <label>Tanggal Saldo Awal</label>
+                <input class='form-control' type='date' name='opening_balance_date' required value='{date.today().isoformat()}'>
+              </div>
+            </div>
+
+            <button class='btn btn-primary' type='submit' style='width: 100%; justify-content: center; margin-top: 8px;'>
+              {_svg_icon('check')} Simpan Akun Keuangan
+            </button>
+          </form>
+        </div>
+
+        <!-- CARD 2: CATAT MUTASI WEALTH -->
+        <div class='panel settings-section-card'>
+          <div class='settings-section-header' style='margin-bottom: 16px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px;'>
+            <div style='display: flex; align-items: center; gap: 10px;'>
+              <div style='width: 32px; height: 32px; border-radius: 8px; background: #ecfdf5; color: #059669; display: flex; align-items: center; justify-content: center;'>{_svg_icon('trending-up')}</div>
+              <div>
+                <h2 class='settings-section-title' style='font-size: 16px;'>Catat Mutasi Dana</h2>
+                <p class='settings-section-desc' style='font-size: 12px;'>Pindah dana, tarik tunai kasir/ATM, atau belanja langsung.</p>
+              </div>
+            </div>
+          </div>
+          <form method='post' action='/keuangan/wealth/operation/create' class='form-stack'>
+            <input type='hidden' name='csrf_token' value='{csrf_token}'>
+            <div class='form-group'>
+              <label>Jenis Transaksi Mutasi</label>
+              <select class='form-control' name='operation_type'>
+                <option value='expense'>Pengeluaran Langsung dari Akun</option>
+                <option value='cash_withdrawal'>Tarik Tunai ATM (Bank &rarr; Kas Fisik)</option>
+                <option value='transfer'>Transfer Antar Akun (Bank &rarr; E-Wallet)</option>
+              </select>
+            </div>
+
+            <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 12px;'>
+              <div class='form-group'>
+                <label>Sumber Dana (Dari Akun)</label>
+                <select class='form-control' name='source_account_id' required>{active_options}</select>
+              </div>
+              <div class='form-group'>
+                <label>Tujuan (Untuk Transfer/ATM)</label>
+                <select class='form-control' name='destination_account_id'>
+                  <option value=''>&mdash; Pilih bila transfer/tarik ATM &mdash;</option>
+                  {active_options}
+                </select>
+              </div>
+            </div>
+
+            <div class='form-group'>
+              <label>Nominal Mutasi (Rp)</label>
+              <input class='form-control' name='amount' inputmode='numeric' required placeholder='Contoh: 150000' style='font-family: var(--font-mono); font-weight: 600;'>
+            </div>
+
+            <div class='form-group'>
+              <label>Keterangan Mutasi</label>
+              <input class='form-control' name='description' required placeholder='Belanja bulanan / isi GoPay / tarik ATM'>
+            </div>
+
+            <button class='btn btn-primary' type='submit' style='width: 100%; justify-content: center; margin-top: 8px;'>
+              {_svg_icon('check')} Proses Catatan Mutasi
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- SECONDARY GRID: REKONSILIASI & SUMBER DEFAULT -->
+      <section class='breakdown-grid' style='display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 24px; margin-bottom: 24px;'>
+        
+        <!-- CARD 3: REKONSILIASI SALDO -->
+        <div class='panel settings-section-card'>
+          <div class='settings-section-header' style='margin-bottom: 14px;'>
+            <div>
+              <h2 class='settings-section-title' style='font-size: 15px;'>Rekonsiliasi Saldo Aktual</h2>
+              <p class='settings-section-desc' style='font-size: 12px;'>Jika mutasi fisik berbeda, sesuaikan dengan saldo nyata di m-banking. Sistem mencatat adjustment transparan.</p>
+            </div>
+          </div>
+          <form method='post' action='/keuangan/wealth/reconcile' class='form-stack'>
+            <input type='hidden' name='csrf_token' value='{csrf_token}'>
+            <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 12px;'>
+              <div class='form-group'>
+                <label>Akun yang Disesuaikan</label>
+                <select class='form-control' name='account_id' required>{active_options}</select>
+              </div>
+              <div class='form-group'>
+                <label>Saldo Nyata Saat Ini (Rp)</label>
+                <input class='form-control' name='actual_balance' inputmode='numeric' required placeholder='Saldo di aplikasi bank' style='font-family: var(--font-mono); font-weight: 600;'>
+              </div>
+            </div>
+            <div class='form-group'>
+              <label>Alasan Rekonsiliasi</label>
+              <input class='form-control' name='reason' required placeholder='Contoh: Bunga bank, biaya admin, selisih kas fisik'>
+            </div>
+            <button class='btn btn-secondary' type='submit' style='align-self: flex-start;'>
+              {_svg_icon('check')} Simpan Penyesuaian Saldo
+            </button>
+          </form>
+        </div>
+
+        <!-- CARD 4: SUMBER DANA DEFAULT TELEGRAM -->
+        <div class='panel settings-section-card'>
+          <div class='settings-section-header' style='margin-bottom: 14px;'>
+            <div>
+              <h2 class='settings-section-title' style='font-size: 15px;'>Akun Default Bot Telegram</h2>
+              <p class='settings-section-desc' style='font-size: 12px;'>Akun ini yang otomatis terpotong saat mencatat via pesan cepat Telegram tanpa menyebut rekening.</p>
+            </div>
+          </div>
+          <form method='post' action='/keuangan/wealth/default/save' class='form-stack'>
+            <input type='hidden' name='csrf_token' value='{csrf_token}'>
+            <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 12px;'>
+              <div class='form-group'>
+                <label>Jenis Transaksi</label>
+                <select class='form-control' name='operation_kind'>
+                  <option value='expense'>Pengeluaran Harian</option>
+                  <option value='income'>Pemasukan</option>
+                </select>
+              </div>
+              <div class='form-group'>
+                <label>Pilih Akun Default</label>
+                <select class='form-control' name='account_id' required>{active_options}</select>
+              </div>
+            </div>
+            <button class='btn btn-secondary' type='submit' style='align-self: flex-start; margin-top: 4px;'>
+              {_svg_icon('check')} Simpan Pengaturan Default
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- RIWAYAT LEDGER & AUDIT TRAIL -->
+      <section class='panel settings-section-card' style='margin-bottom: 32px;'>
+        <div class='settings-section-header' style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;'>
+          <div>
+            <h2 class='settings-section-title'>Riwayat Mutasi Ledger & Audit Trail</h2>
+            <p class='settings-section-desc'>Setiap transaksi memiliki jejak digital utuh. Pembatalan dicatat sebagai transaksi reversal tanpa menghapus data historis.</p>
+          </div>
+        </div>
+        <div class='table-responsive'>
+          <table class='data-table'>
+            <thead>
+              <tr>
+                <th style='width: 14%;'>Tanggal</th>
+                <th style='width: 16%;'>Jenis Operasi</th>
+                <th>Keterangan</th>
+                <th style='width: 18%; text-align: right;'>Nominal</th>
+                <th style='width: 20%;'>Aksi / Status</th>
+              </tr>
+            </thead>
+            <tbody>{operation_rows}</tbody>
+          </table>
+        </div>
+      </section>
+
+      {CREDIT_HTML}
+    </main>"""
 
 
 def _dashboard_response(environ, start_response):

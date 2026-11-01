@@ -10,6 +10,8 @@ def test_git_update_uses_current_branch_and_ff_only(monkeypatch, tmp_path):
         calls.append(args)
         if args[1:4] == ["rev-parse", "--abbrev-ref", "HEAD"]:
             return "production\n"
+        if args[1:4] == ["rev-parse", "--abbrev-ref", "--symbolic-full-name"]:
+            return "origin/codex/wealth-ledger\n"
         return "abc123 - update\n"
 
     def fake_run(args, **kwargs):
@@ -23,8 +25,9 @@ def test_git_update_uses_current_branch_and_ff_only(monkeypatch, tmp_path):
 
     branch, commit, backup, output = passenger_wsgi._run_git_update(str(tmp_path))
 
-    assert branch == "production"
+    assert branch == "production ← origin/codex/wealth-ledger"
     assert commit == "abc123 - update"
-    assert "origin" in calls[1] and "production" in calls[1]
-    assert "--ff-only" in calls[2]
+    assert "origin" in calls[2] and "codex/wealth-ledger" in calls[2]
+    assert "--ff-only" in calls[3]
+    assert "codex/wealth-ledger" in calls[3]
     assert backup.endswith(".pre-git-update-2026-11-01")
