@@ -50,6 +50,20 @@ def test_add_account_flow_collects_fields_and_requires_confirmation():
     assert reply.action == "confirm"
     assert reply.payload["name"] == "Mandiri Operasional"
     assert "💾 Simpan" in [button["text"] for row in reply.keyboard["inline_keyboard"] for button in row]
+    assert "✏️ Edit" in [button["text"] for row in reply.keyboard["inline_keyboard"] for button in row]
+
+
+def test_edit_current_account_draft_restarts_input_without_saving():
+    menu = WealthTelegramMenu()
+    reply = menu.begin_account_request("chat-1", "user-1", {
+        "name": "BCA", "account_type": "bank", "provider": "BCA",
+        "holder_name": "EFENDI", "account_identifier": "1234", "opening_balance": "17516328",
+    })
+    assert "✏️ Edit" in [button["text"] for row in reply.keyboard["inline_keyboard"] for button in row]
+    edit = menu.handle_callback("chat-1", "user-1", "wealth:account:edit_current")
+    assert edit.action == "input"
+    assert "ulang" in edit.text.casefold()
+    assert menu.handle_text("chat-1", "user-1", "BCA Efendi") .action == "input"
 
 
 def test_confirm_callback_returns_account_create_action():
