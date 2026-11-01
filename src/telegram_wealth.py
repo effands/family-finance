@@ -155,4 +155,15 @@ class WealthTelegramMenu:
             return TelegramReply("⚠️ *KONFIRMASI ARSIP AKUN*\n\nAkun ID `{}` akan diarsipkan dan tidak dipakai untuk transaksi baru.\n\nLanjutkan?".format(value), self._keyboard([[('✅ Konfirmasi', 'wealth:confirm'), ('❌ Batalkan', 'wealth:cancel')]]), action="confirm", payload=dict(session.values))
         if session.flow == "wealth:settings:default" and session.step >= 2:
             return TelegramReply("⭐ *KONFIRMASI AKUN DEFAULT*\n\nJenis: `{}`\nAkun ID: `{}`\n\nSimpan?".format(session.values["operation_kind"], session.values["account_id"]), self._keyboard([[('✅ Konfirmasi', 'wealth:confirm'), ('❌ Batalkan', 'wealth:cancel')]]), action="confirm", payload=dict(session.values))
-        return TelegramReply("✅ Data diterima. Langkah berikutnya akan diproses setelah implementasi alur lengkap.", self._keyboard([[("❌ Batalkan", "wealth:cancel"), ("🏠 Menu Utama", "wealth:home")]]), action="input", payload=session.values)
+        prompts = {
+            "wealth:account:add": ["Ketik jenis akun: bank, ewallet, cash, atau investment", "Ketik nama bank/provider", "Ketik nama pemilik akun", "Ketik 4 digit terakhir rekening/ID", "Ketik saldo awal dalam rupiah"],
+            "wealth:investment:add": ["Ketik provider/platform", "Ketik nama pemilik investasi", "Ketik kode/nama instrumen", "Ketik nilai awal investasi dalam rupiah"],
+            "wealth:transfer:start": ["Ketik ID akun tujuan", "Ketik nominal transfer dalam rupiah", "Ketik keterangan transfer"],
+            "wealth:cash:withdraw": ["Ketik ID akun Cash tujuan", "Ketik nominal tarik tunai dalam rupiah", "Ketik keterangan tarik tunai"],
+            "wealth:account:reconcile": ["Ketik saldo aktual saat ini dalam rupiah", "Ketik alasan rekonsiliasi"],
+            "wealth:investment:update": ["Ketik nilai investasi aktual dalam rupiah", "Ketik keterangan perubahan nilai"],
+            "wealth:settings:default": ["Ketik ID akun default"],
+        }
+        next_prompts = prompts.get(session.flow, [])
+        next_prompt = next_prompts[session.step] if session.step < len(next_prompts) else "Ketik data berikutnya"
+        return TelegramReply("✅ Data diterima.\n\n📝 " + next_prompt, self._keyboard([[('❌ Batalkan', 'wealth:cancel'), ('🏠 Menu Utama', 'wealth:home')]]), action="input", payload=session.values)

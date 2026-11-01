@@ -116,3 +116,19 @@ def test_investment_flow_creates_investment_account_with_confirmation():
         reply = menu.handle_text("chat-1", "user-1", value)
     assert reply.action == "confirm"
     assert reply.payload["account_type"] == "investment"
+
+
+def test_guided_account_input_asks_for_next_field_instead_of_placeholder_message():
+    menu = WealthTelegramMenu()
+    menu.handle_callback("chat-1", "user-1", "wealth:account:add")
+    reply = menu.handle_text("chat-1", "user-1", "Mandiri Operasional")
+    assert "nama bank/provider" in reply.text.casefold()
+    assert "implementasi alur lengkap" not in reply.text.casefold()
+
+
+def test_guided_transfer_input_asks_for_next_field():
+    menu = WealthTelegramMenu()
+    menu.handle_callback("chat-1", "user-1", "wealth:transfer:start")
+    reply = menu.handle_text("chat-1", "user-1", "1")
+    assert "nominal transfer" in reply.text.casefold()
+    assert "implementasi alur lengkap" not in reply.text.casefold()
