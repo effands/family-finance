@@ -110,6 +110,17 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
+    pending_fee = context.user_data.get("pending_transfer_fee")
+    if pending_fee:
+        try:
+            fee = parse_idr_amount(text, allow_zero=True)
+            pending = context.user_data.pop("pending_transfer_fee")
+            ledger = WealthLedger(context.application.bot_data["db"])
+            operation = ledger.create_transfer(str(update.effective_chat.id), pending["source_account_id"], pending["destination_account_id"], pending["amount"], pending["description"], date.fromisoformat(pending["date"]), str(update.effective_user.id), update.effective_user.username or update.effective_user.first_name or "user", fee_amount=fee, idempotency_key=f"transfer:{pending['update_id']}")
+            summary = ledger.get_wealth_summary(str(update.effective_chat.id))
+            return await update.message.reply_text(f"✅ Transfer tersimpan\nNominal: *{format_rupiah(pending['amount'])}*\nBiaya admin: *{format_rupiah(fee)}*\nSaldo total: *{format_rupiah(summary.total_wealth)}*\nRef: `{operation.id[:10]}`", parse_mode="Markdown")
+        except (ValueError, WealthError, InsufficientFundsError) as exc:
+            return await update.message.reply_text(f"❌ Biaya admin tidak valid: {exc}")
     pending_source = context.user_data.get("pending_transaction_source")
     if pending_source:
         db = context.application.bot_data["db"]
@@ -722,12 +733,19 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             source_id = int(pending.get("source_account_id", 0))
             if not db.get_account(destination_id, chat_id) or destination_id == source_id:
                 return await query.edit_message_text("❌ Tujuan transfer tidak valid.")
+            pending["destination_account_id"] = destination_id
+            pending["update_id"] = str(update.update_id)
+            return await query.edit_message_text("💸 *Biaya admin transfer?*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Tanpa biaya", callback_data="transfer:fee:0"), InlineKeyboardButton("✍️ Isi biaya", callback_data="transfer:fee:input")], [InlineKeyboardButton("❌ Batalkan", callback_data="transfer:cancel")]]))
+        if data == "transfer:fee:input":
+            context.user_data["pending_transfer_fee"] = pending
+            return await query.edit_message_text("✍️ Ketik biaya admin dalam rupiah.\nContoh: `2500`", parse_mode="Markdown")
+        if data == "transfer:fee:0":
             try:
-                operation = WealthLedger(db).create_transfer(chat_id, source_id, destination_id, int(pending["amount"]), pending["description"], date.fromisoformat(pending["date"]), user_id, update.effective_user.username or update.effective_user.first_name or "user", idempotency_key=f"transfer:{update.update_id}")
+                operation = WealthLedger(db).create_transfer(chat_id, int(pending["source_account_id"]), int(pending["destination_account_id"]), int(pending["amount"]), pending["description"], date.fromisoformat(pending["date"]), user_id, update.effective_user.username or update.effective_user.first_name or "user", fee_amount=0, idempotency_key=f"transfer:{pending.get('update_id', update.update_id)}")
                 context.user_data.pop("pending_transfer", None)
                 summary = WealthLedger(db).get_wealth_summary(chat_id)
-                source = db.get_account(source_id, chat_id)
-                destination = db.get_account(destination_id, chat_id)
+                source = db.get_account(int(pending["source_account_id"]), chat_id)
+                destination = db.get_account(int(pending["destination_account_id"]), chat_id)
                 recipient_id = destination.account_identifier or "-"
                 recipient_id = ("•••• " + recipient_id[-4:]) if len(recipient_id) > 4 else recipient_id
                 return await query.edit_message_text(f"✅ *Transfer tersimpan*\n\nDari: *{source.name}*\nKe: *{destination.name}*\nBank/provider: *{destination.provider}*\nPemilik: *{destination.holder_name}*\nRekening/ID: `{recipient_id}`\nNominal: *{format_rupiah(pending['amount'])}*\n\nTotal kekayaan: *{format_rupiah(summary.total_wealth)}*\nRef: `{operation.id[:10]}`", parse_mode="Markdown")
