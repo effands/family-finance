@@ -22,6 +22,11 @@ Pilih category dari daftar kategori yang diberikan jika cocok. Jika tidak ada ya
 Jangan membuat kategori baru hanya karena variasi penulisan. Jangan gunakan kategori "Lain-lain" jika bisa membuat kategori yang bermakna.
 """
 
+REQUEST_PROMPT = """Pahami maksud pesan pengguna Bahasa Indonesia. Balas HANYA JSON valid:
+{"intent":"account_add|expense|income|transfer|cash_withdrawal|question|unknown","question":string or null,"name":string or null,"account_type":"bank|ewallet|cash|investment" or null,"provider":string or null,"holder_name":string or null,"account_identifier":string or null,"opening_balance":integer or null,"amount":integer or null,"description":string or null,"source_hint":string or null}
+Jika pengguna ingin menambah akun, isi field akun yang disebut. Jika ada data penting yang kurang, isi question dengan satu pertanyaan pendek dan jelas. Jangan mengarang data.
+"""
+
 def transcribe_audio(audio_bytes: bytes, api_keys: tuple[str, ...], model: str, pool=None) -> str:
     pool = pool or GeminiKeyPool(api_keys, model)
     pool.update(api_keys, model)
@@ -82,6 +87,46 @@ def interpret_text(text: str, categories: list[str], api_keys: tuple[str, ...], 
             if client is not None and hasattr(client, "close"):
                 client.close()
     raise RuntimeError(f"Interpretasi teks Gemini gagal: {last}")
+
+
+def interpret_request(text: str, api_keys: tuple[str, ...], model: str, pool=None) -> dict:
+    """Classify arbitrary finance text and extract account/source fields."""
+    pool = pool or GeminiKeyPool(api_keys, model)
+    pool.update(api_keys, model)
+    if not pool.keys:
+        raise RuntimeError("GEMINI_API_KEYS belum diisi")
+    last = None
+    for key in pool.ordered():
+        client = None
+        try:
+            client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_MS))
+            response = client.models.generate_content(
+                model=model,
+                contents=REQUEST_PROMPT + "\nPesan pengguna:\n" + text,
+                config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0),
+            )
+            data = json.loads((response.text or "").strip())
+            allowed = {"account_add", "expense", "income", "transfer", "cash_withdrawal", "question", "unknown"}
+            intent = str(data.get("intent") or "unknown").casefold()
+            return {
+                "intent": intent if intent in allowed else "unknown",
+                "question": str(data.get("question") or "").strip()[:240],
+                "name": str(data.get("name") or "").strip()[:100],
+                "account_type": str(data.get("account_type") or "").strip().casefold(),
+                "provider": str(data.get("provider") or "").strip()[:100],
+                "holder_name": str(data.get("holder_name") or "").strip()[:100],
+                "account_identifier": str(data.get("account_identifier") or "").strip()[:60],
+                "opening_balance": data.get("opening_balance"),
+                "amount": data.get("amount"),
+                "description": str(data.get("description") or "").strip()[:240],
+                "source_hint": str(data.get("source_hint") or "").strip()[:100],
+            }
+        except Exception as exc:
+            last = exc
+        finally:
+            if client is not None and hasattr(client, "close"):
+                client.close()
+    raise RuntimeError(f"Analisa pesan Gemini gagal: {last}")
 
 def _clean_json(text: str) -> dict:
     text=text.strip().removeprefix("```json").removesuffix("```").strip()

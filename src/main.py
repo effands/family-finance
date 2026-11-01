@@ -24,7 +24,7 @@ from .formatting import format_rupiah, render_confirmation
 from .models import Category, FinancialAccount, Transaction
 from .parser import ParseError, parse_message
 from .rate_limit import RateLimiter
-from .receipt_ai import GeminiKeyPool, extract_receipt, interpret_text, transcribe_audio
+from .receipt_ai import GeminiKeyPool, extract_receipt, interpret_text, interpret_request, transcribe_audio
 from .reports import build_expense_summary, build_income_summary, build_report
 from .wealth import WealthLedger, WealthError, InsufficientFundsError, parse_idr_amount
 from .telegram_wealth import WealthTelegramMenu
@@ -140,6 +140,18 @@ async def menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     guided = context.application.bot_data["wealth_menu"].handle_text(str(update.effective_chat.id), str(update.effective_user.id), text, str(update.update_id))
     if guided:
         return await update.message.reply_text(guided.text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(guided.keyboard["inline_keyboard"]))
+    settings = context.application.bot_data["settings"]
+    if settings.gemini_api_keys and len(text) >= 20:
+        try:
+            ai_request = await asyncio.to_thread(interpret_request, text, settings.gemini_api_keys, settings.gemini_model, context.application.bot_data["gemini_pool"])
+            if ai_request["intent"] == "account_add":
+                values = {key: ai_request[key] for key in ("name", "account_type", "provider", "holder_name", "account_identifier", "opening_balance") if ai_request.get(key) not in ("", None)}
+                reply = context.application.bot_data["wealth_menu"].begin_account_request(str(update.effective_chat.id), str(update.effective_user.id), values)
+                return await update.message.reply_text("🏦 Tambah akun\n\n" + reply.text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(reply.keyboard["inline_keyboard"]))
+            if ai_request["intent"] == "question" and ai_request["question"]:
+                return await update.message.reply_text("🤖 " + ai_request["question"])
+        except Exception:
+            pass
     intent = classify_finance_intent(text)
     if intent == "account_add":
         menu = context.application.bot_data["wealth_menu"]
