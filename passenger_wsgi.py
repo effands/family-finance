@@ -945,14 +945,56 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
 </div>
 
 <div class="modal-overlay" id="modal-git-update" role="dialog" aria-modal="true" aria-labelledby="git-update-title">
-  <div class="modal-card git-update-modal">
-    <div class="modal-header"><div><div class="modal-kicker">Perlindungan update</div><h3 id="git-update-title">Perbarui kode dari GitHub</h3></div><button class="modal-close-btn" type="button" aria-label="Tutup" onclick="closeModal('modal-git-update')">&times;</button></div>
-    <div class="modal-body">
-      <p class="git-update-lead">Sistem akan menarik branch production yang sedang aktif di server, bukan branch yang ditebak.</p>
-      <div class="git-update-checklist"><div><strong>Branch aktif</strong><span>{html.escape(git_branch)}</span></div><div><strong>Commit sekarang</strong><span>{html.escape(git_commit)}</span></div><div><strong>Perlindungan</strong><span>Backup database + fast-forward only + compile check</span></div><div><strong>Dampak</strong><span>Aplikasi dimuat ulang sebentar setelah kode berhasil diperbarui</span></div></div>
-      <p class="setting-help-text">Jika branch memiliki perubahan lokal atau konflik, pembaruan dibatalkan dan data tidak ditimpa.</p>
+  <div class="modal-dialog git-update-modal" style="max-width: 540px; background: #ffffff; border-radius: 16px; box-shadow: 0 20px 40px -10px rgba(15,23,42,0.25); overflow: hidden;">
+    <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid var(--border-subtle); background: #f8fafc;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #1e40af, #2563eb); color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(37,99,235,0.25);">
+          {_svg_icon('git-pull-request')}
+        </div>
+        <div>
+          <div class="modal-kicker" style="color: var(--brand-primary); font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;">Sinkronisasi Repositori</div>
+          <h3 id="git-update-title" style="margin: 2px 0 0; font-size: 18px; font-weight: 700; color: var(--ink-primary);">Perbarui Kode dari GitHub</h3>
+        </div>
+      </div>
+      <button class="modal-close-btn" type="button" aria-label="Tutup" onclick="closeModal('modal-git-update')">&times;</button>
     </div>
-    <div class="modal-footer"><button class="btn btn-ghost" type="button" onclick="closeModal('modal-git-update')">Batalkan</button><form method="post" action="/keuangan/settings/system/update"><button class="btn btn-primary" type="submit" id="btn-git-update-confirm">Tarik & Muat Ulang</button></form></div>
+    <div class="modal-body" style="padding: 22px 24px; display: flex; flex-direction: column; gap: 16px;">
+      <p class="git-update-lead" style="margin: 0; font-size: 13.5px; color: var(--ink-secondary); line-height: 1.55;">
+        Sistem akan menarik versi kode terbaru dari repositori GitHub ke server VPS secara otomatis melalui mekanisme <em>fast-forward only</em> yang aman.
+      </p>
+      
+      <div class="git-update-checklist" style="display: flex; flex-direction: column; gap: 10px; background: #f8fafc; border: 1px solid var(--border-subtle); border-radius: 12px; padding: 14px 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; border-bottom: 1px solid #e8edf3; padding-bottom: 9px;">
+          <strong style="color: var(--ink-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;">Branch Aktif</strong>
+          <span style="font-family: var(--font-mono); font-weight: 700; color: var(--brand-primary); background: #eff6ff; padding: 3px 10px; border-radius: 6px; border: 1px solid #bfdbfe;">{html.escape(git_branch)}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; border-bottom: 1px solid #e8edf3; padding-bottom: 9px;">
+          <strong style="color: var(--ink-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;">Commit Saat Ini</strong>
+          <span style="font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-muted);">{html.escape(git_commit)}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; border-bottom: 1px solid #e8edf3; padding-bottom: 9px;">
+          <strong style="color: var(--ink-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;">Protokol Keamanan</strong>
+          <span style="color: #059669; font-weight: 600; display: flex; align-items: center; gap: 5px;">{_svg_icon('check')} Auto-Backup DB + FF Only</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12.5px;">
+          <strong style="color: var(--ink-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;">Dampak Server</strong>
+          <span style="color: var(--ink-muted); font-size: 12px;">Reload Passenger otomatis (&plusmn; 1-2 detik)</span>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: flex-start; gap: 10px; background: #fffbeb; border: 1px solid #fde68a; padding: 11px 14px; border-radius: 8px; font-size: 12px; color: #92400e; line-height: 1.45;">
+        <span style="font-size: 15px; line-height: 1;">ℹ️</span>
+        <span>Jika terdapat perubahan lokal atau konflik pada server, pembaruan akan dibatalkan otomatis dan database tidak akan ditimpa.</span>
+      </div>
+    </div>
+    <div class="modal-footer" style="padding: 16px 24px; background: #f8fafc; border-top: 1px solid var(--border-subtle); display: flex; justify-content: flex-end; gap: 10px;">
+      <button class="btn btn-ghost" type="button" onclick="closeModal('modal-git-update')">Batalkan</button>
+      <form method="post" action="/keuangan/settings/system/update" style="margin: 0;">
+        <button class="btn btn-primary" type="submit" id="btn-git-update-confirm" style="display: inline-flex; align-items: center; gap: 6px;">
+          {_svg_icon('sparkles')} Tarik & Muat Ulang
+        </button>
+      </form>
+    </div>
   </div>
 </div>
 
