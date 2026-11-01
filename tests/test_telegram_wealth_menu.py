@@ -65,3 +65,23 @@ def test_confirm_callback_returns_account_create_action():
 def test_account_list_is_a_distinct_data_action():
     reply = WealthTelegramMenu().handle_callback("chat-1", "user-1", "wealth:account:list")
     assert reply.action == "account_list"
+
+
+def test_transfer_flow_requires_confirmation_with_four_fields():
+    menu = WealthTelegramMenu()
+    menu.handle_callback("chat-1", "user-1", "wealth:transfer")
+    menu.handle_callback("chat-1", "user-1", "wealth:transfer:start")
+    reply = None
+    for value in ["1", "2", "3000000", "Pindah kebutuhan bulanan"]:
+        reply = menu.handle_text("chat-1", "user-1", value)
+    assert reply.action == "confirm"
+    assert reply.payload["source_account_id"] == "1"
+
+
+def test_atm_withdrawal_flow_uses_cash_destination():
+    menu = WealthTelegramMenu()
+    menu.handle_callback("chat-1", "user-1", "wealth:cash:withdraw")
+    for value in ["1", "2", "3000000", "Tarik ATM"]:
+        reply = menu.handle_text("chat-1", "user-1", value)
+    assert reply.action == "confirm"
+    assert reply.payload["operation_type"] == "cash_withdrawal"

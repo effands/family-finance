@@ -59,6 +59,10 @@ class WealthTelegramMenu:
             payload = dict(session.values)
             self.clear(chat_id, user_id)
             return TelegramReply("✅ Akun siap disimpan.", self._keyboard([[('🏠 Menu Utama', 'wealth:home')]]), action="account_create", payload=payload)
+        if callback_data == "wealth:confirm" and session.flow in {"wealth:transfer:start", "wealth:cash:withdraw"} and session.step >= 4:
+            payload = dict(session.values)
+            self.clear(chat_id, user_id)
+            return TelegramReply("✅ Mutasi siap disimpan.", self._keyboard([[('🏠 Menu Utama', 'wealth:home')]]), action="operation_create", payload=payload)
         if callback_data in {"wealth:home", "wealth:cancel", "wealth:back"}:
             self.clear(chat_id, user_id)
             return self.main_menu(chat_id, user_id)
@@ -66,6 +70,9 @@ class WealthTelegramMenu:
             session.flow, session.step, session.values = callback_data, 0, {}
             prompts = {"wealth:account:add": "Ketik nama akun, contoh: `Mandiri Operasional`", "wealth:cash:withdraw": "Ketik ID akun bank sumber", "wealth:account:reconcile": "Ketik ID akun yang akan direkonsiliasi", "wealth:account:archive": "Ketik ID akun yang akan diarsipkan", "wealth:investment:add": "Ketik nama instrumen, contoh: `SBN ST014`", "wealth:investment:update": "Ketik ID akun investasi", "wealth:settings:default": "Ketik jenis transaksi: `income` atau `expense`"}
             return TelegramReply("📝 " + prompts[callback_data], self._keyboard([[('❌ Batalkan', 'wealth:cancel'), ('🏠 Menu Utama', 'wealth:home')]]), action="input")
+        if callback_data == "wealth:transfer:start":
+            session.flow, session.step, session.values = callback_data, 0, {}
+            return TelegramReply("📝 Ketik ID akun sumber", self._keyboard([[('❌ Batalkan', 'wealth:cancel'), ('🏠 Menu Utama', 'wealth:home')]]), action="input")
         screens = {
             "wealth:summary": ("📊 *RINGKASAN KEUANGAN*", "summary"),
             "wealth:expense": ("💰 *CATAT PENGELUARAN*\nGunakan perintah cepat untuk transaksi rutin.", "quick"),
@@ -91,7 +98,10 @@ class WealthTelegramMenu:
         if callback_data.endswith(":list") or callback_data in {"wealth:summary", "wealth:report:recent"}:
             action = "account_list" if callback_data == "wealth:account:list" else screen
             return TelegramReply(title, self._keyboard([[("⬅️ Kembali", "wealth:back"), ("🏠 Menu Utama", "wealth:home")]]), action=action, payload={"update_id": update_id})
-        rows = [[item] for item in keyboards.get(screen, [])] + [[("⬅️ Kembali", "wealth:back"), ("🏠 Menu Utama", "wealth:home")]]
+        rows = [[item] for item in keyboards.get(screen, [])]
+        if callback_data == "wealth:transfer":
+            rows.insert(0, [("🧾 Mulai Transfer Terpandu", "wealth:transfer:start")])
+        rows += [[("⬅️ Kembali", "wealth:back"), ("🏠 Menu Utama", "wealth:home")]]
         return TelegramReply(title, self._keyboard(rows), action=screen)
 
     def handle_text(self, chat_id, user_id, text, update_id=""):
@@ -102,9 +112,16 @@ class WealthTelegramMenu:
         if session.flow == "wealth:account:add":
             fields = ("name", "account_type", "provider", "holder_name", "account_identifier", "opening_balance")
             session.values[fields[session.step]] = value
+        elif session.flow in {"wealth:transfer:start", "wealth:cash:withdraw"}:
+            fields = ("source_account_id", "destination_account_id", "amount", "description")
+            session.values[fields[session.step]] = value
+            if session.flow == "wealth:cash:withdraw":
+                session.values["operation_type"] = "cash_withdrawal"
         else:
             session.values[f"step_{session.step}"] = value
         session.step += 1
         if session.flow == "wealth:account:add" and session.step >= 6:
             return TelegramReply("🔎 *KONFIRMASI AKUN BARU*\n\n" + "\n".join(f"• {key}: `{val}`" for key, val in session.values.items()) + "\n\nSimpan akun ini?", self._keyboard([[('✅ Konfirmasi', 'wealth:confirm'), ('❌ Batalkan', 'wealth:cancel')]]), action="confirm", payload=dict(session.values))
+        if session.flow in {"wealth:transfer:start", "wealth:cash:withdraw"} and session.step >= 4:
+            return TelegramReply("🔎 *KONFIRMASI MUTASI*\n\n" + "\n".join(f"• {key}: `{val}`" for key, val in session.values.items()) + "\n\nProses mutasi ini?", self._keyboard([[('✅ Konfirmasi', 'wealth:confirm'), ('❌ Batalkan', 'wealth:cancel')]]), action="confirm", payload=dict(session.values))
         return TelegramReply("✅ Data diterima. Langkah berikutnya akan diproses setelah implementasi alur lengkap.", self._keyboard([[("❌ Batalkan", "wealth:cancel"), ("🏠 Menu Utama", "wealth:home")]]), action="input", payload=session.values)

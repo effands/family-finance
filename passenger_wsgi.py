@@ -3276,6 +3276,15 @@ def application(environ, start_response):
                             ident = ("•••• " + account.account_identifier[-4:]) if len(account.account_identifier) > 4 else "—"
                             lines.append(f"• *{account.name}* · {ident}\n  Saldo: *{format_rupiah(balance.balance if balance else account.opening_balance)}*")
                         reply.text = "\n".join(lines) if len(lines) > 2 else "🏦 Belum ada akun aktif."
+                    elif reply.action == "operation_create":
+                        values = reply.payload
+                        try:
+                            amount = parse_idr_amount(values["amount"])
+                            operation_type = values.get("operation_type", "transfer")
+                            WealthLedger(db).create_transfer(chat_id, int(values["source_account_id"]), int(values["destination_account_id"]), amount, values["description"], now.date(), user_id, sender.get("username") or sender.get("first_name") or "user", operation_type=operation_type, idempotency_key=f"telegram-operation:{update.get('update_id')}")
+                            reply.text = f"✅ Mutasi berhasil dicatat: *{format_rupiah(amount)}*"
+                        except (KeyError, ValueError, WealthError, InsufficientFundsError) as exc:
+                            reply.text = f"❌ Mutasi ditolak: {exc}"
                     elif reply.action == "accounts":
                         reply.text += "\n\nGunakan tombol di bawah untuk melihat atau mengelola akun."
                     _send_telegram(chat_id, reply.text, reply_markup=reply.keyboard)
