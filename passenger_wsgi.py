@@ -3263,7 +3263,7 @@ def application(environ, start_response):
                         try:
                             values = reply.payload
                             account = FinancialAccount(None, chat_id, values["name"].strip().upper(), values["account_type"], values["provider"].strip().upper(), values["holder_name"].strip().upper(), values["account_identifier"].strip(), "IDR", parse_idr_amount(values["opening_balance"]), date.today())
-                            db.create_account(account, idempotency_key=f"telegram-account:{update.get('update_id')}")
+                            account = db.create_account(account, idempotency_key=f"telegram-account:{update.get('update_id')}")
                             reply.text = f"✅ *Akun berhasil ditambahkan*\n\n{account.name}\nSaldo awal: *{format_rupiah(account.opening_balance)}*\nID akun: `{account.id}`"
                         except (KeyError, ValueError, WealthError) as exc:
                             reply.text = f"❌ Akun tidak disimpan: {exc}"
