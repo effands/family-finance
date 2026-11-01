@@ -585,7 +585,7 @@ def _render_settings_page(db: Database, settings, active_tab: str, toast_html: s
     emoji_quick_buttons = "".join(f'<button type="button" class="btn btn-secondary btn-sm" onclick="setEmojiQuick(&quot;{em}&quot;)">{em}</button>' for em in ['🍔','⛽','🏠','💊','📱','👶','👕','💰','📈','🎓','🚗','✈️','🎁','🐾','🛒','💳'])
     body = f"""<div class="toast-container">{toast_html}</div>
 
-<main class="page-shell">
+<main class="page-shell settings-center-page">
   <header class="topbar">
     <a class="brand-lockup" href="/keuangan/dashboard" title="Kembali ke Beranda (Home)">
       <div class="brand-mark">FF</div>
@@ -1105,7 +1105,7 @@ def _render_backup_page(db: Database, chat_id: str, csrf_token: str, toast: str 
     tx_count = len(db.list_transactions(TransactionFilters(chat_id)))
     acc_count = len(db.list_accounts(chat_id))
 
-    return f"""<main class='page-shell wealth-center-page'>
+    return f"""<main class='page-shell backup-center-page'>
       <header class='topbar'>
         <a class='brand-lockup' href='/keuangan/dashboard'>
           <div class='brand-mark'>FF</div>
@@ -1299,7 +1299,7 @@ def _render_wealth_page(db: Database, chat_id: str, csrf_token: str, toast_html:
 
     operation_rows = "".join(_operation_row(r) for r in ledger.list_operations(chat_id)) or "<tr><td colspan='5'><div class='empty-state-box' style='padding: 28px 16px; text-align: center; color: var(--ink-muted);'>Belum ada mutasi wealth tercatat.</div></td></tr>"
 
-    return f"""<main class='page-shell'>
+    return f"""<main class='page-shell wealth-center-page'>
       <header class='topbar'>
         <a class='brand-lockup' href='/keuangan/dashboard'>
           <div class='brand-mark'>FF</div>
@@ -2652,7 +2652,7 @@ def _dashboard_response(environ, start_response):
     # Main Dashboard Body
     body = f"""<div class="toast-container">{toast_html}</div>
 
-<main class="page-shell">
+<main class="page-shell dashboard-center-page">
   <!-- Top Navigation Bar -->
   <header class="topbar">
     <a class="brand-lockup" href="/keuangan/dashboard" title="Kembali ke Beranda (Home)">

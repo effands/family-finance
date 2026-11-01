@@ -1713,7 +1713,7 @@ body { background-image: none; color: var(--ink-primary); }
 .git-update-modal .git-update-checklist > div span { display: block !important; width: 100%; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 
 /* Wealth Center — pastel nebula glass theme */
-body:has(.wealth-center-page) {
+body:has(.dashboard-center-page), body:has(.wealth-center-page), body:has(.backup-center-page), body:has(.settings-center-page) {
   background-color: #eef3fb;
   background-image:
     radial-gradient(circle at 8% 8%, rgba(255, 214, 232, .72), transparent 27%),
@@ -1722,7 +1722,7 @@ body:has(.wealth-center-page) {
     linear-gradient(135deg, #f7faff 0%, #eef3fb 48%, #f8f1fb 100%);
   background-attachment: fixed;
 }
-body:has(.wealth-center-page)::before {
+body:has(.dashboard-center-page)::before, body:has(.wealth-center-page)::before, body:has(.backup-center-page)::before, body:has(.settings-center-page)::before {
   content: "";
   position: fixed;
   inset: 0;
@@ -1733,6 +1733,19 @@ body:has(.wealth-center-page)::before {
   mask-image: linear-gradient(to bottom, #000, transparent 80%);
 }
 .wealth-center-page { position: relative; }
+.dashboard-center-page, .wealth-center-page, .backup-center-page, .settings-center-page { position: relative; }
+.dashboard-center-page, .wealth-center-page, .backup-center-page, .settings-center-page { --nebula-accent: #7c6cf2; --nebula-glow: rgba(124,108,242,.14); }
+.dashboard-center-page { --nebula-accent: #4f8df7; --nebula-glow: rgba(96,165,250,.18); }
+.wealth-center-page { --nebula-accent: #8569e8; --nebula-glow: rgba(167,139,250,.18); }
+.backup-center-page { --nebula-accent: #e99570; --nebula-glow: rgba(251,191,155,.2); }
+.settings-center-page { --nebula-accent: #d77ab7; --nebula-glow: rgba(244,180,215,.2); }
+body:has(.dashboard-center-page) { background-image: radial-gradient(circle at 10% 5%, rgba(191,219,254,.8), transparent 28%), radial-gradient(circle at 88% 18%, rgba(221,214,254,.75), transparent 30%), linear-gradient(135deg,#f6fbff,#eef3ff 55%,#faf6ff); }
+body:has(.wealth-center-page) { background-image: radial-gradient(circle at 8% 8%, rgba(255,214,232,.72), transparent 27%), radial-gradient(circle at 92% 12%, rgba(194,229,255,.82), transparent 29%), radial-gradient(circle at 50% 78%, rgba(220,207,255,.58), transparent 34%), linear-gradient(135deg,#f7faff,#eef3fb 48%,#f8f1fb); }
+body:has(.backup-center-page) { background-image: radial-gradient(circle at 8% 10%, rgba(255,226,203,.82), transparent 29%), radial-gradient(circle at 90% 16%, rgba(196,243,226,.72), transparent 31%), linear-gradient(135deg,#fffaf5,#f1fbf8 54%,#fff3f7); }
+body:has(.settings-center-page) { background-image: radial-gradient(circle at 7% 8%, rgba(250,210,235,.76), transparent 28%), radial-gradient(circle at 92% 12%, rgba(199,229,255,.78), transparent 31%), linear-gradient(135deg,#fff8fd,#f1f5ff 54%,#fff9f2); }
+.dashboard-center-page .btn-primary, .wealth-center-page .btn-primary, .backup-center-page .btn-primary, .settings-center-page .btn-primary { background: linear-gradient(135deg, var(--nebula-accent), #7aa7f8); border-color: transparent; box-shadow: 0 8px 18px var(--nebula-glow); }
+.dashboard-center-page .btn-primary:hover, .wealth-center-page .btn-primary:hover, .backup-center-page .btn-primary:hover, .settings-center-page .btn-primary:hover { filter: saturate(1.08) brightness(.96); }
+.dashboard-center-page .brand-mark, .wealth-center-page .brand-mark, .backup-center-page .brand-mark, .settings-center-page .brand-mark { background: linear-gradient(135deg, var(--nebula-accent), #77b7f7); box-shadow: 0 8px 18px var(--nebula-glow); }
 .wealth-center-page .metric-card,
 .wealth-center-page .panel,
 .wealth-center-page .settings-section-card {
