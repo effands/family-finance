@@ -2361,7 +2361,7 @@ def _dashboard_response(environ, start_response):
     except ValueError as exc:
         filters, period = TransactionFilters(chat_id), "month"
 
-    rows = db.list_transactions(filters)
+    rows = db.list_transactions_with_ledger(filters)
     income, expense, categories, users, cat_counts, user_counts = _summary(rows)
     balance = income - expense
     savings_rate = round(((income - expense) / income) * 100, 1) if income > 0 else (0.0 if expense > 0 else 100.0)

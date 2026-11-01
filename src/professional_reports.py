@@ -37,7 +37,7 @@ def build_professional_report(db, chat_id: str, report_type: str, start: date | 
             {"wealth": summary.total_wealth, "liquid": summary.liquid_assets, "investments": summary.investments, "cash": summary.cash},
             report_type="wealth",
         )
-    transactions = db.list_transactions(TransactionFilters(chat_id, start=start, end=end))
+    transactions = db.list_transactions_with_ledger(TransactionFilters(chat_id, start=start, end=end))
     rows = [{"tanggal": x.transaction_date.isoformat(), "jenis": x.type, "uraian": x.description, "kategori": x.category, "nominal": x.amount, "pencatat": x.username or x.user_id or ""} for x in transactions]
     income = sum(x.amount for x in transactions if x.type == "income")
     expense = sum(x.amount for x in transactions if x.type == "expense")

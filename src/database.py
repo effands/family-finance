@@ -279,6 +279,44 @@ class Database:
         with self._conn() as c:
             return [self._row(r) for r in c.execute(q, p).fetchall()]
 
+    def list_transactions_with_ledger(self, f: TransactionFilters):
+        """Return legacy transactions plus wealth-ledger income/expense entries.
+
+        The ledger is authoritative for wealth-linked Telegram entries; projecting
+        its income/expense operations here keeps the dashboard and cashflow views
+        consistent without duplicating internal transfers.
+        """
+        rows = self.list_transactions(f)
+        q = """SELECT o.id, o.actor_user_id, o.actor_username, o.chat_id,
+                       CASE WHEN o.operation_type='income' THEN 'income' ELSE 'expense' END AS type,
+                       SUM(CASE WHEN e.direction='debit' THEN e.amount ELSE 0 END) AS amount,
+                       o.description, o.category, o.transaction_date, o.created_at
+                FROM ledger_operations o
+                JOIN ledger_entries e ON e.operation_id=o.id
+                WHERE o.chat_id=? AND o.operation_type IN ('income','expense')
+                  AND o.id NOT IN (SELECT operation_id FROM legacy_ledger_links WHERE chat_id=?)
+                GROUP BY o.id"""
+        params = [f.chat_id, f.chat_id]
+        if f.start:
+            q = q.replace("GROUP BY o.id", "AND o.transaction_date>=? GROUP BY o.id"); params.append(f.start.isoformat())
+        if f.end:
+            q = q.replace("GROUP BY o.id", "AND o.transaction_date<=? GROUP BY o.id"); params.append(f.end.isoformat())
+        with self._conn() as c:
+            for r in c.execute(q, params).fetchall():
+                item = self._row(r)
+                if f.transaction_type and item.type != f.transaction_type:
+                    continue
+                if f.category and item.category != f.category:
+                    continue
+                if f.user_id and item.user_id != f.user_id:
+                    continue
+                if f.search and not any(f.search.lower() in str(v or '').lower() for v in (item.description, item.category, item.username)):
+                    continue
+                rows.append(item)
+        rows.sort(key=lambda x: (x.transaction_date, x.created_at), reverse=f.sort_dir.lower() != "asc")
+        if f.sort_by == "amount": rows.sort(key=lambda x: x.amount, reverse=f.sort_dir.lower() != "asc")
+        return rows
+
     def find_latest_transaction(self, user_id, chat_id, now):
         with self._conn() as c:
             return self._row(
