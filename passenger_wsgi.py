@@ -1105,7 +1105,7 @@ def _render_backup_page(db: Database, chat_id: str, csrf_token: str, toast: str 
     tx_count = len(db.list_transactions(TransactionFilters(chat_id)))
     acc_count = len(db.list_accounts(chat_id))
 
-    return f"""<main class='page-shell'>
+    return f"""<main class='page-shell wealth-center-page'>
       <header class='topbar'>
         <a class='brand-lockup' href='/keuangan/dashboard'>
           <div class='brand-mark'>FF</div>
