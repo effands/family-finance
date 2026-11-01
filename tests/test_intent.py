@@ -37,3 +37,11 @@ def test_missing_account_identifier_is_not_invented_from_sentence_text():
 
 def test_crypto_is_saved_as_investment_portfolio_type():
     assert extract_account_fields("tambah crypto Bitcoin saldo 2 juta")["account_type"] == "investment"
+
+
+def test_tambahkan_bank_sentence_is_account_request():
+    text = "tambahkan bank yaitu BANK RAYA norek 001001627681318 saldo 1427980 atas nama efendi"
+    assert classify_finance_intent(text) == "account_add"
+    fields = extract_account_fields(text)
+    assert fields["provider"] == "BANK RAYA"
+    assert fields["account_identifier"] == "001001627681318"
