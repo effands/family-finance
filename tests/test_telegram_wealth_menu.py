@@ -60,3 +60,8 @@ def test_confirm_callback_returns_account_create_action():
     reply = menu.handle_callback("chat-1", "user-1", "wealth:confirm")
     assert reply.action == "account_create"
     assert reply.payload["account_type"] == "ewallet"
+
+
+def test_account_list_is_a_distinct_data_action():
+    reply = WealthTelegramMenu().handle_callback("chat-1", "user-1", "wealth:account:list")
+    assert reply.action == "account_list"

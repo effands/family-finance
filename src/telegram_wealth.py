@@ -71,8 +71,10 @@ class WealthTelegramMenu:
             "wealth:expense": ("💰 *CATAT PENGELUARAN*\nGunakan perintah cepat untuk transaksi rutin.", "quick"),
             "wealth:income": ("💵 *CATAT PEMASUKAN*\nGunakan perintah cepat untuk transaksi rutin.", "quick"),
             "wealth:accounts": ("🏦 *KELOLA AKUN & SALDO*\nPilih operasi yang ingin dilakukan.", "accounts"),
+            "wealth:account:list": ("🏦 *SALDO SEMUA AKUN*", "accounts"),
             "wealth:transfer": ("🔄 *TRANSFER DANA*\nGunakan perintah cepat `/transfer` untuk transaksi langsung.", "quick"),
             "wealth:investment": ("📈 *INVESTASI*\nKelola SBN, crypto, saham, dan emas.", "investment"),
+            "wealth:investment:list": ("📈 *PORTOFOLIO INVESTASI*", "investment"),
             "wealth:reports": ("📋 *RIWAYAT & LAPORAN*", "reports"),
             "wealth:settings": ("⚙️ *PENGATURAN*", "settings"),
         }
@@ -87,7 +89,8 @@ class WealthTelegramMenu:
             "settings": [("⭐ Atur Akun Default", "wealth:settings:default"), ("❓ Panduan", "wealth:help")],
         }
         if callback_data.endswith(":list") or callback_data in {"wealth:summary", "wealth:report:recent"}:
-            return TelegramReply(title, self._keyboard([[("⬅️ Kembali", "wealth:back"), ("🏠 Menu Utama", "wealth:home")]]), action=screen, payload={"update_id": update_id})
+            action = "account_list" if callback_data == "wealth:account:list" else screen
+            return TelegramReply(title, self._keyboard([[("⬅️ Kembali", "wealth:back"), ("🏠 Menu Utama", "wealth:home")]]), action=action, payload={"update_id": update_id})
         rows = [[item] for item in keyboards.get(screen, [])] + [[("⬅️ Kembali", "wealth:back"), ("🏠 Menu Utama", "wealth:home")]]
         return TelegramReply(title, self._keyboard(rows), action=screen)
 

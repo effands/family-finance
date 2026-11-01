@@ -3268,6 +3268,14 @@ def application(environ, start_response):
                     elif reply.action == "summary":
                         summary = WealthLedger(db).get_wealth_summary(chat_id)
                         reply.text = f"📊 *RINGKASAN KEUANGAN*\n\n• Total kekayaan: *{format_rupiah(summary.total_wealth)}*\n• Aset likuid: *{format_rupiah(summary.liquid_assets)}*\n• Investasi: *{format_rupiah(summary.investments)}*\n• Cash: *{format_rupiah(summary.cash)}*"
+                    elif reply.action == "account_list":
+                        balances = {x.account_id: x for x in WealthLedger(db).get_account_balances(chat_id, include_archived=False)}
+                        lines = ["🏦 *SALDO SEMUA AKUN*", ""]
+                        for account in db.list_accounts(chat_id):
+                            balance = balances.get(account.id)
+                            ident = ("•••• " + account.account_identifier[-4:]) if len(account.account_identifier) > 4 else "—"
+                            lines.append(f"• *{account.name}* · {ident}\n  Saldo: *{format_rupiah(balance.balance if balance else account.opening_balance)}*")
+                        reply.text = "\n".join(lines) if len(lines) > 2 else "🏦 Belum ada akun aktif."
                     elif reply.action == "accounts":
                         reply.text += "\n\nGunakan tombol di bawah untuk melihat atau mengelola akun."
                     _send_telegram(chat_id, reply.text, reply_markup=reply.keyboard)
