@@ -9,7 +9,7 @@ from google.genai import types
 GEMINI_TIMEOUT_MS = 120_000
 
 PROMPT = """Baca foto/screenshot transaksi ini. Balas HANYA JSON valid tanpa markdown:
-{"amount": integer rupiah, "description": string, "date": "YYYY-MM-DD" or null, "time": "HH:MM" or null, "location": string or null, "transaction_kind":"purchase|transfer|income|expense", "direction":"in|out|unknown", "bank":string or null, "source_bank":string or null, "destination_bank":string or null, "sender":string or null, "recipient":string or null, "recipient_account_identifier":string or null, "reference":string or null, "category": string, "items":[{"name":string,"quantity":number,"unit":string or null,"unit_price":integer,"subtotal":integer,"category":string}]}
+{"amount": integer rupiah, "description": string, "date": "YYYY-MM-DD" or null, "time": "HH:MM" or null, "location": string or null, "transaction_kind":"purchase|transfer|income|expense", "direction":"in|out|unknown", "bank":string or null, "source_bank":string or null, "source_account_identifier":string or null, "destination_bank":string or null, "sender":string or null, "recipient":string or null, "recipient_account_identifier":string or null, "reference":string or null, "category": string, "items":[{"name":string,"quantity":number,"unit":string or null,"unit_price":integer,"subtotal":integer,"category":string}]}
 Untuk struk belanja, items berisi setiap barang yang terbaca beserta jumlah, harga satuan, dan subtotal. Jangan mengarang item yang tidak terbaca. Untuk transfer, isi bank, sumber/tujuan, pengirim/penerima, referensi, jam, dan lokasi bila terlihat. direction=in berarti uang masuk, out berarti keluar. Nominal dalam rupiah dan 0 jika tidak jelas. category pilih: Makanan & Minuman, Transportasi, Rumah & Utilitas, Kesehatan, Pulsa & Digital, Anak, Belanja, Pemasukan, Lain-lain."""
 
 AUDIO_PROMPT = "Transkripsikan audio Bahasa Indonesia ini secara tepat. Balas hanya kalimat yang diucapkan, tanpa penjelasan tambahan."
@@ -155,9 +155,9 @@ def _clean_json(text: str) -> dict:
         except (TypeError, ValueError):
             continue
     result = {"amount": amount, "description": str(data.get("description") or "Struk belanja").strip()[:240], "date": parsed_date, "category": str(data.get("category") or "Lain-lain").strip()[:80]}
-    extra_keys = ("time", "location", "transaction_kind", "direction", "bank", "source_bank", "destination_bank", "sender", "recipient", "recipient_account_identifier", "reference")
+    extra_keys = ("time", "location", "transaction_kind", "direction", "bank", "source_bank", "source_account_identifier", "destination_bank", "sender", "recipient", "recipient_account_identifier", "reference")
     if items or any(key in data for key in extra_keys):
-        result.update({"time": data.get("time"), "location": data.get("location"), "transaction_kind": data.get("transaction_kind") or "purchase", "direction": data.get("direction") or "unknown", "bank": data.get("bank"), "source_bank": data.get("source_bank"), "destination_bank": data.get("destination_bank"), "sender": data.get("sender"), "recipient": data.get("recipient"), "recipient_account_identifier": data.get("recipient_account_identifier"), "reference": data.get("reference"), "items": items})
+        result.update({"time": data.get("time"), "location": data.get("location"), "transaction_kind": data.get("transaction_kind") or "purchase", "direction": data.get("direction") or "unknown", "bank": data.get("bank"), "source_bank": data.get("source_bank"), "source_account_identifier": data.get("source_account_identifier"), "destination_bank": data.get("destination_bank"), "sender": data.get("sender"), "recipient": data.get("recipient"), "recipient_account_identifier": data.get("recipient_account_identifier"), "reference": data.get("reference"), "items": items})
     return result
 
 class GeminiKeyPool:

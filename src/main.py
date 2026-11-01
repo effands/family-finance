@@ -645,6 +645,7 @@ async def receipt_photo_handler(update: Update, context: ContextTypes.DEFAULT_TY
             f"🕒 *Jam           :* {data.get('time') or '-'}\n"
             f"📍 *Lokasi        :* {data.get('location') or '-'}\n"
             f"🏦 *Bank          :* {data.get('bank') or data.get('source_bank') or data.get('destination_bank') or '-'}\n"
+            f"🏦 *Sumber        :* {data.get('source_bank') or '-'} {('••••' + str(data.get('source_account_identifier'))[-4:]) if data.get('source_account_identifier') else ''}\n"
             f"👤 *Penerima      :* {data.get('recipient') or '-'}\n"
             f"🔢 *Rekening tujuan:* {data.get('recipient_account_identifier') or '-'}\n"
             f"🔁 *Jenis         :* {data.get('transaction_kind') or '-'}\n"
@@ -652,14 +653,31 @@ async def receipt_photo_handler(update: Update, context: ContextTypes.DEFAULT_TY
             f"━━━━━━━━━━━━━━━━━━━━━━\n"
             f"Apakah Anda ingin menyimpan transaksi ini?"
         )
-        keys = InlineKeyboardMarkup([
+        db = context.application.bot_data["db"]
+        source_hint = str(data.get("source_account_identifier") or "").replace(" ", "")
+        source_bank_hint = str(data.get("source_bank") or data.get("bank") or "").casefold()
+        sender_hint = str(data.get("sender") or "").casefold()
+        suggested = []
+        for account in db.list_accounts(str(update.effective_chat.id)):
+            haystack = f"{account.name} {account.provider}".casefold()
+            bank_match = source_bank_hint and (source_bank_hint in haystack or haystack in source_bank_hint)
+            suffix_match = source_hint and account.account_identifier.replace(" ", "").endswith(source_hint[-4:])
+            holder_match = sender_hint and sender_hint in account.holder_name.casefold()
+            if bank_match and (suffix_match or holder_match):
+                suggested.append(account)
+        rows = []
+        if len(suggested) == 1:
+            account = suggested[0]
+            masked = "••••" + account.account_identifier[-4:] if account.account_identifier else "tanpa nomor"
+            rows.append([InlineKeyboardButton(f"✅ Ya, {account.name} - {account.holder_name} {masked}", callback_data=f"receipt:source:{account.id}")])
+            rows.append([InlineKeyboardButton("🏦 Pilih sumber lain", callback_data="receipt:save")])
+        else:
+            rows.append([InlineKeyboardButton("🏦 Pilih sumber dana", callback_data="receipt:save")])
+        rows.append([InlineKeyboardButton("✏️ Koreksi", callback_data="receipt:edit")])
+        keys = InlineKeyboardMarkup(rows + [
             [
-                InlineKeyboardButton("✅ Simpan Mutasi", callback_data="receipt:save"),
-                InlineKeyboardButton("✏️ Koreksi", callback_data="receipt:edit"),
-            ],
-            [
-                InlineKeyboardButton("❌ Batalkan", callback_data="receipt:cancel"),
-            ],
+                InlineKeyboardButton("❌ Batalkan", callback_data="receipt:cancel")
+            ]
         ])
         stage = "mengirim hasil ke Telegram"
         await status_msg.edit_text(preview, parse_mode="Markdown", reply_markup=keys, read_timeout=60, connect_timeout=30)
