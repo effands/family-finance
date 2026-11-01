@@ -501,7 +501,16 @@ def _rows_html(rows, active_chat_id=""):
         desc_js = desc_escaped.replace("'", "\\'")
         display_id = f"WL-{str(x.id)[:8]}" if not isinstance(x.id, int) else str(x.id)
         detail_data = getattr(x, "detail_data", {})
-        detail_payload = {"id": display_id, "date": x.transaction_date.isoformat(), "type": "Pemasukan" if is_inc else "Pengeluaran", "category": x.category, "description": x.description, "amount": format_rupiah(x.amount), "user": x.username or x.user_id or "Admin", "source": detail_data.get("source_account") or "-", "destination": detail_data.get("destination_account") or "-", "destination_provider": detail_data.get("destination_provider") or "-", "destination_identifier": detail_data.get("destination_identifier") or "-"}
+        destination = detail_data.get("destination_account") or "-"
+        destination_provider = detail_data.get("destination_provider") or "-"
+        destination_identifier = detail_data.get("destination_identifier") or "-"
+        if "| Tujuan:" in x.description:
+            raw_target = x.description.split("| Tujuan:", 1)[1].strip()
+            target_parts = [part.strip() for part in raw_target.split("/")]
+            destination = target_parts[0] or destination
+            if len(target_parts) > 1: destination_provider = target_parts[1] or destination_provider
+            if len(target_parts) > 2: destination_identifier = target_parts[2] or destination_identifier
+        detail_payload = {"id": display_id, "date": x.transaction_date.isoformat(), "type": "Pemasukan" if is_inc else "Pengeluaran", "category": x.category, "description": x.description.split(" | Tujuan:", 1)[0], "amount": format_rupiah(x.amount), "user": x.username or x.user_id or "Admin", "source": detail_data.get("source_account") or "-", "destination": destination, "destination_provider": destination_provider, "destination_identifier": destination_identifier}
         detail_json = html.escape(json.dumps(detail_payload, ensure_ascii=False), quote=True)
         detail_action = f"<button class='btn btn-ghost btn-sm' type='button' title='Lihat detail transaksi' aria-label='Lihat detail transaksi' onclick='openDetailModal({detail_json})'>{_svg_icon('eye')}</button>"
         edit_action = "" if not isinstance(x.id, int) else f"<button class='btn btn-ghost btn-sm' type='button' title='Edit transaksi' aria-label='Edit transaksi' onclick=\"openEditModal({x.id}, '{x.type}', {x.amount}, {json.dumps(x.description)}, {json.dumps(x.category)}, '{x.transaction_date.isoformat()}', {json.dumps(x.username or x.user_id or 'Admin')})\">{_svg_icon('edit')}</button>"
@@ -3109,7 +3118,7 @@ function openAddModal() {{ openModal('modal-add-tx'); }}
 function openImportModal() {{ openModal('modal-import-csv'); }}
 function openDetailModal(data) {{
   const set = (id, value) => document.getElementById(id).textContent = value || '-';
-  set('detail-modal-title', data.description || 'Rincian Mutasi'); set('detail-amount', data.amount); set('detail-type', data.type);
+  set('detail-modal-title', 'Rincian Mutasi ' + (data.id || '')); set('detail-amount', data.amount); set('detail-type', data.type);
   set('detail-id', data.id); set('detail-date', data.date); set('detail-category', data.category); set('detail-user', data.user);
   set('detail-description', data.description); set('detail-source', data.source); set('detail-destination', data.destination);
   set('detail-provider', data.destination_provider); set('detail-identifier', data.destination_identifier); openModal('modal-detail-tx');
