@@ -212,6 +212,14 @@ class Database:
         with self._conn() as c:
             return self._account_from_row(c.execute(q, params).fetchone())
 
+    def update_account_metadata(self, account_id: int, chat_id: str, *, name: str, provider: str, holder_name: str, account_identifier: str) -> FinancialAccount:
+        with self._conn() as c:
+            c.execute(
+                "UPDATE financial_accounts SET name=?, provider=?, holder_name=?, account_identifier=?, updated_at=? WHERE id=? AND chat_id=?",
+                (name.strip(), provider.strip(), holder_name.strip(), account_identifier.strip(), datetime.now().isoformat(), account_id, chat_id),
+            )
+            return self._account_from_row(c.execute("SELECT * FROM financial_accounts WHERE id=? AND chat_id=?", (account_id, chat_id)).fetchone())
+
     def _row(self, r):
         return (
             Transaction(

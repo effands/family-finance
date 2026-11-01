@@ -623,11 +623,32 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now()
 
     if data.startswith("wealth:"):
+        if data == "wealth:duplicate:update":
+            pending = context.user_data.pop("pending_account_update", None)
+            if not pending:
+                return await query.message.reply_text("❌ Data update sudah kedaluwarsa.")
+            try:
+                existing = db.get_account(int(pending["existing_id"]), chat_id)
+                if not existing:
+                    raise WealthError("Akun duplikat tidak ditemukan")
+                db.update_account_metadata(existing.id, chat_id, name=pending["name"], provider=pending["provider"], holder_name=pending["holder_name"], account_identifier=pending["account_identifier"])
+                WealthLedger(db).reconcile_account(chat_id, existing.id, parse_idr_amount(pending["opening_balance"], allow_zero=True), "Update akun duplikat", date.today(), user_id, update.effective_user.username or "user")
+                return await query.message.reply_text(f"✅ Akun {existing.name} berhasil diperbarui.\nID akun: {existing.id}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Menu Utama", callback_data="wealth:home")]]))
+            except (KeyError, ValueError, WealthError) as exc:
+                return await query.message.reply_text(f"❌ Update akun gagal: {exc}")
         reply = context.application.bot_data["wealth_menu"].handle_callback(chat_id, user_id, data, str(update.update_id))
         if reply.action == "account_create":
             try:
                 values = reply.payload
                 account = FinancialAccount(None, chat_id, values["name"], values["account_type"], values["provider"], values["holder_name"], values["account_identifier"], "IDR", int(values["opening_balance"].replace(".", "").replace(",", "")), date.today())
+                normalized = lambda value: " ".join(str(value).casefold().split())
+                duplicate = next((item for item in db.list_accounts(chat_id) if (values.get("account_identifier") and normalized(item.account_identifier) == normalized(values["account_identifier"])) or (normalized(item.name) == normalized(values["name"]) and normalized(item.provider) == normalized(values["provider"]))), None)
+                if duplicate:
+                    context.user_data["pending_account_update"] = {**values, "existing_id": duplicate.id}
+                    return await query.message.reply_text(
+                        f"⚠️ Akun duplikat terdeteksi\n\nAkun {duplicate.name} ({duplicate.provider}) dengan ID {duplicate.id} sudah ada.\n\nApakah ingin memperbarui data dan saldo akun tersebut?",
+                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔁 Update Akun", callback_data="wealth:duplicate:update"), InlineKeyboardButton("❌ Batalkan", callback_data="wealth:cancel")]]),
+                    )
                 account = db.create_account(account, idempotency_key=f"telegram-account:{update.update_id}")
                 reply.text = f"✅ *Akun berhasil ditambahkan*\n{account.name}\nID akun: `{account.id}`"
             except (KeyError, ValueError, WealthError) as exc:
