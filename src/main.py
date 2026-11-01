@@ -20,12 +20,13 @@ from .categorizer import categorize
 from .config import load_settings
 from .database import Database
 from .formatting import format_rupiah, render_confirmation
-from .models import Transaction
+from .models import FinancialAccount, Transaction
 from .parser import ParseError, parse_message
 from .rate_limit import RateLimiter
 from .receipt_ai import GeminiKeyPool, extract_receipt, transcribe_audio
 from .reports import build_expense_summary, build_income_summary, build_report
 from .wealth import WealthLedger, WealthError, InsufficientFundsError
+from .telegram_wealth import WealthTelegramMenu
 
 MENU_KEYBOARD = ReplyKeyboardMarkup(
     [
@@ -101,14 +102,15 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     user = update.effective_user
     name = f"@{user.username}" if user.username else (user.first_name or "Keluarga")
-    welcome = f"👋 *Halo, {name}!*\nSelamat datang di *Finance Family*.\n\n" + HELP_TEXT
-    # Reply keyboard muncul langsung di bawah kolom ketik seperti menu bot pada
-    # umumnya; tetap bisa dipakai berdampingan dengan perintah slash.
-    await update.message.reply_text(welcome, parse_mode="Markdown", reply_markup=MENU_KEYBOARD)
+    reply = context.application.bot_data["wealth_menu"].main_menu(str(update.effective_chat.id), str(user.id), f"👋 *Halo, {name}!*")
+    await update.message.reply_text(reply.text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(reply.keyboard["inline_keyboard"]))
 
 
 async def menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
+    guided = context.application.bot_data["wealth_menu"].handle_text(str(update.effective_chat.id), str(update.effective_user.id), text, str(update.update_id))
+    if guided:
+        return await update.message.reply_text(guided.text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(guided.keyboard["inline_keyboard"]))
     if text in ("📊 Rekap Bulan Ini", "💰 Saldo Kas"):
         return await report_cmd(update, context, "bulan")
     if text == "📈 Total Pemasukan":
@@ -523,6 +525,21 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     now = datetime.now()
 
+    if data.startswith("wealth:"):
+        reply = context.application.bot_data["wealth_menu"].handle_callback(chat_id, user_id, data, str(update.update_id))
+        if reply.action == "account_create":
+            try:
+                values = reply.payload
+                account = FinancialAccount(None, chat_id, values["name"], values["account_type"], values["provider"], values["holder_name"], values["account_identifier"], "IDR", int(values["opening_balance"].replace(".", "").replace(",", "")), date.today())
+                db.create_account(account, idempotency_key=f"telegram-account:{update.update_id}")
+                reply.text = f"✅ *Akun berhasil ditambahkan*\n{account.name}\nID akun: `{account.id}`"
+            except (KeyError, ValueError, WealthError) as exc:
+                reply.text = f"❌ Akun tidak disimpan: {exc}"
+        elif reply.action == "summary":
+            summary = WealthLedger(db).get_wealth_summary(chat_id)
+            reply.text = f"📊 *RINGKASAN KEUANGAN*\n\n• Total kekayaan: *{format_rupiah(summary.total_wealth)}*\n• Aset likuid: *{format_rupiah(summary.liquid_assets)}*\n• Investasi: *{format_rupiah(summary.investments)}*\n• Cash: *{format_rupiah(summary.cash)}*"
+        return await query.message.reply_text(reply.text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(reply.keyboard["inline_keyboard"]))
+
     # Receipt callbacks
     if data.startswith("receipt:"):
         pending = context.user_data.get("pending_receipt")
@@ -624,7 +641,7 @@ def build_app():
         ])
 
     app = Application.builder().token(s.bot_token).post_init(clear_webhook).build()
-    app.bot_data.update(settings=s, db=db, limiter=RateLimiter(s.rate_limit), gemini_pool=GeminiKeyPool(s.gemini_api_keys, s.gemini_model))
+    app.bot_data.update(settings=s, db=db, limiter=RateLimiter(s.rate_limit), gemini_pool=GeminiKeyPool(s.gemini_api_keys, s.gemini_model), wealth_menu=WealthTelegramMenu())
 
     app.add_handler(CommandHandler(["start", "menu", "bantuan"], start_cmd))
     app.add_handler(CommandHandler(["pemasukan", "masuk"], income_cmd))
