@@ -3276,7 +3276,7 @@ def application(environ, start_response):
                         for account in db.list_accounts(chat_id):
                             balance = balances.get(account.id)
                             ident = ("•••• " + account.account_identifier[-4:]) if len(account.account_identifier) > 4 else "—"
-                            lines.append(f"• *{account.name}* · {ident}\n  Saldo: *{format_rupiah(balance.balance if balance else account.opening_balance)}*")
+                            lines.append(f"• *{account.name}* · {ident}\n  Saldo: *{format_rupiah(balance.balance if balance else account.opening_balance)}*\n")
                         reply.text = "\n".join(lines) if len(lines) > 2 else "🏦 Belum ada akun aktif."
                     elif reply.action == "operation_create":
                         values = reply.payload
