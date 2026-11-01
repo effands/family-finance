@@ -195,6 +195,21 @@ class WealthTelegramMenu:
             return TelegramReply("⚠️ *KONFIRMASI ARSIP AKUN*\n\nAkun ID `{}` akan diarsipkan dan tidak dipakai untuk transaksi baru.\n\nLanjutkan?".format(value), self._keyboard([[('✅ Konfirmasi', 'wealth:confirm'), ('❌ Batalkan', 'wealth:cancel')]]), action="confirm", payload=dict(session.values))
         if session.flow == "wealth:settings:default" and session.step >= 2:
             return TelegramReply("⭐ *KONFIRMASI AKUN DEFAULT*\n\nJenis: `{}`\nAkun ID: `{}`\n\nSimpan?".format(session.values["operation_kind"], session.values["account_id"]), self._keyboard([[('✅ Konfirmasi', 'wealth:confirm'), ('❌ Batalkan', 'wealth:cancel')]]), action="confirm", payload=dict(session.values))
+        if session.flow == "wealth:account:add":
+            field_prompts = {
+                "name": "Ketik nama akun/panggilan",
+                "account_type": "Ketik jenis akun: bank, ewallet, cash, atau investment",
+                "provider": "Ketik nama bank/provider",
+                "holder_name": "Ketik nama pemilik akun",
+                "account_identifier": "Ketik nomor rekening/ID/nomor HP",
+                "opening_balance": "Ketik saldo awal dalam rupiah",
+            }
+            fields = ("name", "account_type", "provider", "holder_name", "account_identifier", "opening_balance")
+            next_field = next((field for field in fields[session.step:] if not session.values.get(field)), None)
+            if next_field:
+                legacy_prompts = ["Ketik jenis akun: bank, ewallet, cash, atau investment", "Ketik nama bank/provider", "Ketik nama pemilik akun", "Ketik nomor rekening/ID/nomor HP", "Ketik saldo awal dalam rupiah"]
+                prompt = legacy_prompts[session.step] if session.step < len(legacy_prompts) else field_prompts[next_field]
+                return TelegramReply("✅ Data diterima.\n\n📝 " + prompt, self._keyboard([[('❌ Batalkan', 'wealth:cancel'), ('🏠 Menu Utama', 'wealth:home')]]), action="input", payload=session.values)
         prompts = {
             "wealth:account:add": ["Ketik jenis akun: bank, ewallet, cash, atau investment", "Ketik nama bank/provider", "Ketik nama pemilik akun", "Ketik 4 digit terakhir rekening/ID", "Ketik saldo awal dalam rupiah"],
             "wealth:investment:add": ["Ketik provider/platform", "Ketik nama pemilik investasi", "Ketik kode/nama instrumen", "Ketik nilai awal investasi dalam rupiah"],

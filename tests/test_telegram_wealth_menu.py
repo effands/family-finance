@@ -160,6 +160,15 @@ def test_account_request_skips_fields_already_read_from_sentence():
     assert reply.payload["opening_balance"] == "17516328"
 
 
+def test_account_request_names_next_missing_field_after_skipped_values():
+    menu = WealthTelegramMenu()
+    reply = menu.begin_account_request("chat-1", "user-1", {
+        "name": "DANA", "account_type": "ewallet", "provider": "DANA",
+        "account_identifier": "085708780656", "holder_name": "YENI SETIYAWATI",
+    })
+    assert "saldo awal" in reply.text.casefold()
+
+
 def test_edit_account_flow_requires_all_updated_fields_and_confirmation():
     menu = WealthTelegramMenu()
     menu.handle_callback("chat-1", "user-1", "wealth:account:edit")
