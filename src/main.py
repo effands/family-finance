@@ -453,6 +453,7 @@ async def accounts_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         provider_line = f"  Provider: {provider} ·" if provider.casefold() != account.name.casefold() else " "
         owner = f" - {account.holder_name}" if account.holder_name and account.holder_name.casefold() != account.name.casefold() else ""
         lines.append(f"• *{account.name}{owner}*\n{provider_line} ID {account.id} · {ident} · {format_rupiah(balance)}")
+    lines.append(f"\n💎 *TOTAL SELURUH SALDO: {format_rupiah(sum(item.balance for item in balances.values()))}*")
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
@@ -766,6 +767,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     provider_line = f"  Provider: {provider} ·" if provider.casefold() != account.name.casefold() else " "
                     owner = f" - {account.holder_name}" if account.holder_name and account.holder_name.casefold() != account.name.casefold() else ""
                     lines.append(f"• *{account.name}{owner}*\n{provider_line} ID {account.id} · *{format_rupiah(balance)}*")
+                lines.append(f"\n💎 *TOTAL SELURUH SALDO: {format_rupiah(sum(item.balance for item in balances.values() if item.account_id in {a.id for a in accounts}))}*")
                 reply.text = "\n".join(lines)
         elif reply.action == "reports":
             rows = WealthLedger(db).list_operations(chat_id, limit=10)
