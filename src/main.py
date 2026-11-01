@@ -110,6 +110,20 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
+    pending_source = context.user_data.get("pending_transaction_source")
+    if pending_source:
+        db = context.application.bot_data["db"]
+        chat_id = str(update.effective_chat.id)
+        accounts = db.list_accounts(chat_id)
+        chosen = None
+        if text.isdigit():
+            chosen = db.get_account(int(text), chat_id)
+        if chosen is None:
+            chosen = next((a for a in accounts if text.casefold() in {a.name.casefold(), a.provider.casefold()}), None)
+        if chosen is None:
+            return await update.message.reply_text("❓ Sumber dana tidak ditemukan.\nKetik ID akun atau pilih tombol akun.", parse_mode="Markdown")
+        context.user_data.pop("pending_transaction_source", None)
+        return await message_handler(update, context, text_override=pending_source["text"], force_account_id=chosen.id)
     if context.user_data.get("receipt_editing"):
         pending = context.user_data.get("pending_receipt")
         if pending:
@@ -157,7 +171,7 @@ async def menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await message_handler(update, context)
 
 
-async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, text_override=None, reply_message=None):
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, text_override=None, reply_message=None, force_account_id=None):
     s = context.application.bot_data["settings"]
     if not allowed(update, s):
         return
@@ -216,7 +230,17 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, te
         category = categorize(parsed.description, db.list_categories())
     uname = user.username or user.first_name or "user"
     wealth_ledger = WealthLedger(db)
-    wealth_account = wealth_ledger.get_default_account(chat_id, parsed.type, str(user.id))
+    wealth_account = db.get_account(force_account_id, chat_id) if force_account_id else wealth_ledger.get_default_account(chat_id, parsed.type, str(user.id))
+    if parsed.type == "expense" and force_account_id is None:
+        accounts = db.list_accounts(chat_id)
+        lowered = str(text).casefold()
+        hinted = next((a for a in accounts if a.name.casefold() in lowered or a.provider.casefold() in lowered or (a.account_type == "cash" and "cash" in lowered)), None)
+        if hinted is None and accounts:
+            context.user_data["pending_transaction_source"] = {"text": text}
+            balances = {item.account_id: item.balance for item in WealthLedger(db).get_account_balances(chat_id, include_archived=False)}
+            rows = [[InlineKeyboardButton(f"🏦 {a.name} · {format_rupiah(balances.get(a.id, 0))}", callback_data=f"txsource:{a.id}")] for a in accounts if a.id in balances]
+            rows.append([InlineKeyboardButton("❌ Batalkan", callback_data="txsource:cancel")])
+            return await reply.reply_text("💳 Bayar dari akun mana?", reply_markup=InlineKeyboardMarkup(rows))
     if wealth_account:
         try:
             if parsed.type == "income":
@@ -624,6 +648,17 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
     user_id = str(update.effective_user.id)
     now = datetime.now()
+
+    if data.startswith("txsource:"):
+        if data == "txsource:cancel":
+            context.user_data.pop("pending_transaction_source", None)
+            return await query.message.reply_text("❌ Pencatatan dibatalkan.")
+        pending = context.user_data.get("pending_transaction_source")
+        if not pending:
+            return await query.message.reply_text("❌ Permintaan sumber dana sudah kedaluwarsa.")
+        account_id = int(data.split(":", 1)[1])
+        context.user_data.pop("pending_transaction_source", None)
+        return await message_handler(update, context, text_override=pending["text"], reply_message=query.message, force_account_id=account_id)
 
     if data.startswith("wealth:"):
         if data == "wealth:duplicate:update":
