@@ -1,6 +1,6 @@
 """Button-first Telegram navigation and guided Wealth input state."""
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from threading import Lock
 
 @dataclass
@@ -16,7 +16,7 @@ class _Session:
     flow: str | None = None
     step: int = 0
     values: dict = field(default_factory=dict)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 class WealthTelegramMenu:
     TTL = timedelta(minutes=15)
@@ -33,10 +33,10 @@ class WealthTelegramMenu:
         key = (str(chat_id), str(user_id))
         with self._lock:
             session = self._sessions.get(key)
-            if not session or datetime.utcnow() - session.updated_at > self.TTL:
+            if not session or datetime.now(timezone.utc) - session.updated_at > self.TTL:
                 session = _Session()
                 self._sessions[key] = session
-            session.updated_at = datetime.utcnow()
+            session.updated_at = datetime.now(timezone.utc)
             return session
 
     def clear(self, chat_id, user_id):
