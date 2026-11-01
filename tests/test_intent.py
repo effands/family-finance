@@ -28,3 +28,8 @@ def test_account_fields_are_extracted_from_one_sentence():
     assert fields["holder_name"] == "EFENDI"
     assert fields["opening_balance"] == "17516328"
     assert fields["account_identifier"] == "1234"
+
+
+def test_missing_account_identifier_is_not_invented_from_sentence_text():
+    fields = extract_account_fields("aku mau input bank baru BCA atas nama EFENDI saldo 17.516.328")
+    assert "account_identifier" not in fields

@@ -40,7 +40,7 @@ def extract_account_fields(text: str) -> dict:
     provider = re.search(r"(?:bank|rekening|akun)\s+(?:baru\s+)?([A-Za-z][A-Za-z0-9 ._-]{1,40}?)(?=\s+(?:atas nama|nama|saldo|no|nomor|norek|rekening|$))", value, re.I)
     holder = re.search(r"(?:atas nama|nama pemilik)\s+([A-Za-z][A-Za-z .'-]{1,60}?)(?=\s+(?:saldo|rp|no|nomor|norek|rekening|$))", value, re.I)
     balance = re.search(r"(?:saldo(?: awal)?|rp)\s*[:=]?\s*([\d.,]+)\s*(?:jt|juta|rb|ribu)?", value, re.I)
-    identifier = re.search(r"(?:no(?:mor)?|norek|rekening|id)\s*(?:rekening)?\s*[:=]?\s*([0-9][0-9 -]{2,30})", value, re.I)
+    identifier = re.search(r"\b(?:no(?:mor)?\s+rekening|norek|rekening|account\s+id)\s*[:=]?\s*([0-9][0-9 -]{2,30})\b", value, re.I)
     if provider:
         fields["provider"] = provider.group(1).strip()
         fields["name"] = fields["provider"]
