@@ -27,7 +27,8 @@ class WealthTelegramMenu:
 
     @staticmethod
     def _keyboard(rows):
-        return {"inline_keyboard": [[{"text": label, "callback_data": data} for label, data in row] for row in rows]}
+        labels = {"✅ Konfirmasi": "💾 Simpan", "✅ Konfirmasi Akun": "💾 Simpan Akun"}
+        return {"inline_keyboard": [[{"text": labels.get(label, label), "callback_data": data} for label, data in row] for row in rows]}
 
     def _session(self, chat_id, user_id):
         key = (str(chat_id), str(user_id))

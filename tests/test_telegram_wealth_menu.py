@@ -49,7 +49,7 @@ def test_add_account_flow_collects_fields_and_requires_confirmation():
         reply = menu.handle_text("chat-1", "user-1", value)
     assert reply.action == "confirm"
     assert reply.payload["name"] == "Mandiri Operasional"
-    assert "✅ Konfirmasi" in [button["text"] for row in reply.keyboard["inline_keyboard"] for button in row]
+    assert "💾 Simpan" in [button["text"] for row in reply.keyboard["inline_keyboard"] for button in row]
 
 
 def test_confirm_callback_returns_account_create_action():
