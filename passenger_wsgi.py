@@ -79,6 +79,13 @@ def _monogram(name: str) -> str:
     return clean[:2].upper() if clean else "FF"
 
 
+def _display_user_name(name: str) -> str:
+    """Make known concatenated Telegram names readable in the web UI."""
+    value = str(name or "User").strip()
+    aliases = {"novipratiwi": "Novi Pratiwi"}
+    return aliases.get(value.casefold(), value)
+
+
 def _avatar_tone(name: str) -> str:
     tones = ("tone-indigo", "tone-emerald", "tone-coral", "tone-amber", "tone-violet", "tone-teal")
     return tones[sum(ord(ch) for ch in (name or "U").casefold()) % len(tones)]
@@ -494,7 +501,8 @@ def _rows_html(rows, active_chat_id=""):
         type_badge = f'<span class="badge-type {"income" if is_inc else "expense"}">{"Pemasukan" if is_inc else "Pengeluaran"}</span>'
         sign = "+" if is_inc else "-"
         amt_class = "income" if is_inc else "expense"
-        user_name = html.escape(x.username or x.user_id or "User")
+        raw_user_name = x.username or x.user_id or "User"
+        user_name = html.escape(_display_user_name(raw_user_name))
         user_initials = _monogram(user_name)
         desc_escaped = html.escape(x.description)
         cat_escaped = html.escape(x.category)
@@ -510,10 +518,10 @@ def _rows_html(rows, active_chat_id=""):
             destination = target_parts[0] or destination
             if len(target_parts) > 1: destination_provider = target_parts[1] or destination_provider
             if len(target_parts) > 2: destination_identifier = target_parts[2] or destination_identifier
-        detail_payload = {"id": display_id, "date": x.transaction_date.isoformat(), "type": "Pemasukan" if is_inc else "Pengeluaran", "category": x.category, "description": x.description.split(" | Tujuan:", 1)[0], "amount": format_rupiah(x.amount), "user": x.username or x.user_id or "Admin", "source": detail_data.get("source_account") or "-", "destination": destination, "destination_provider": destination_provider, "destination_identifier": destination_identifier}
+        detail_payload = {"id": display_id, "date": x.transaction_date.isoformat(), "type": "Pemasukan" if is_inc else "Pengeluaran", "category": x.category, "description": x.description.split(" | Tujuan:", 1)[0], "amount": format_rupiah(x.amount), "user": _display_user_name(raw_user_name), "source": detail_data.get("source_account") or "-", "destination": destination, "destination_provider": destination_provider, "destination_identifier": destination_identifier}
         detail_json = html.escape(json.dumps(detail_payload, ensure_ascii=False), quote=True)
         detail_action = f"<button class='btn btn-ghost btn-sm' type='button' title='Lihat detail transaksi' aria-label='Lihat detail transaksi' onclick='openDetailModal({detail_json})'>{_svg_icon('eye')}</button>"
-        edit_action = "" if not isinstance(x.id, int) else f"<button class='btn btn-ghost btn-sm' type='button' title='Edit transaksi' aria-label='Edit transaksi' onclick=\"openEditModal({x.id}, '{x.type}', {x.amount}, {json.dumps(x.description)}, {json.dumps(x.category)}, '{x.transaction_date.isoformat()}', {json.dumps(x.username or x.user_id or 'Admin')})\">{_svg_icon('edit')}</button>"
+        edit_action = "" if not isinstance(x.id, int) else f"<button class='btn btn-ghost btn-sm' type='button' title='Edit transaksi' aria-label='Edit transaksi' onclick=\"openEditModal({x.id}, '{x.type}', {x.amount}, {json.dumps(x.description)}, {json.dumps(x.category)}, '{x.transaction_date.isoformat()}', {json.dumps(_display_user_name(raw_user_name))})\">{_svg_icon('edit')}</button>"
         delete_action = "" if not isinstance(x.id, int) else f"<button class='btn btn-ghost btn-sm' type='button' title='Hapus transaksi ini' onclick=\"confirmDelete({x.id}, '{desc_js}', '{format_rupiah(x.amount)}')\">{_svg_icon('trash')}</button>"
         output.append(f"""<tr class="tx-row" data-id="{x.id}">
           <td class="tabular-nums" style="color: var(--ink-muted); font-size: 12px; font-weight: 600;" title="ID internal: {html.escape(str(x.id))}">#{display_id}</td>
