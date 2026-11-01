@@ -144,3 +144,15 @@ def test_account_request_skips_fields_already_read_from_sentence():
     reply = menu.handle_text("chat-1", "user-1", "1234")
     assert reply.action == "confirm"
     assert reply.payload["opening_balance"] == "17516328"
+
+
+def test_edit_account_flow_requires_all_updated_fields_and_confirmation():
+    menu = WealthTelegramMenu()
+    menu.handle_callback("chat-1", "user-1", "wealth:account:edit")
+    reply = None
+    for value in ["3", "BCA", "Bank BCA", "EFENDI", "1234", "18000000"]:
+        reply = menu.handle_text("chat-1", "user-1", value)
+    assert reply.action == "confirm"
+    saved = menu.handle_callback("chat-1", "user-1", "wealth:confirm")
+    assert saved.action == "account_update"
+    assert saved.payload["actual_balance"] == "18000000"

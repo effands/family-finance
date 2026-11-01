@@ -640,7 +640,18 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except (KeyError, ValueError, WealthError) as exc:
                 return await query.message.reply_text(f"❌ Update akun gagal: {exc}")
         reply = context.application.bot_data["wealth_menu"].handle_callback(chat_id, user_id, data, str(update.update_id))
-        if reply.action == "account_create":
+        if reply.action == "account_update":
+            try:
+                values = reply.payload
+                existing = db.get_account(int(values["account_id"]), chat_id)
+                if not existing:
+                    raise WealthError("Akun tidak ditemukan")
+                db.update_account_metadata(existing.id, chat_id, name=values["name"], provider=values["provider"], holder_name=values["holder_name"], account_identifier=values["account_identifier"])
+                WealthLedger(db).reconcile_account(chat_id, existing.id, parse_idr_amount(values["actual_balance"], allow_zero=True), "Edit akun dari Telegram", date.today(), user_id, update.effective_user.username or "user")
+                reply.text = f"✅ Akun {values['name']} dan saldo berhasil diperbarui.\nID akun: {existing.id}"
+            except (KeyError, ValueError, WealthError) as exc:
+                reply.text = f"❌ Perubahan akun gagal: {exc}"
+        elif reply.action == "account_create":
             try:
                 values = reply.payload
                 account = FinancialAccount(None, chat_id, values["name"], values["account_type"], values["provider"], values["holder_name"], values["account_identifier"], "IDR", int(values["opening_balance"].replace(".", "").replace(",", "")), date.today())
