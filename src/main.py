@@ -15,6 +15,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from telegram.request import HTTPXRequest
 
 from .categorizer import categorize
 from .config import load_settings
@@ -844,7 +845,16 @@ def build_app():
             ("bantuan", "Panduan penggunaan bot"),
         ])
 
-    app = Application.builder().token(s.bot_token).post_init(clear_webhook).build()
+    telegram_request = HTTPXRequest(connect_timeout=30, read_timeout=60, write_timeout=60, pool_timeout=30)
+    updates_request = HTTPXRequest(connect_timeout=30, read_timeout=75, write_timeout=60, pool_timeout=30)
+    app = (
+        Application.builder()
+        .token(s.bot_token)
+        .request(telegram_request)
+        .get_updates_request(updates_request)
+        .post_init(clear_webhook)
+        .build()
+    )
     app.bot_data.update(settings=s, db=db, limiter=RateLimiter(s.rate_limit), gemini_pool=GeminiKeyPool(s.gemini_api_keys, s.gemini_model), wealth_menu=WealthTelegramMenu())
 
     app.add_handler(CommandHandler(["start", "menu", "bantuan"], start_cmd))
