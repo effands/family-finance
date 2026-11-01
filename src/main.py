@@ -145,6 +145,11 @@ async def menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return await update.message.reply_text(f"❌ Biaya admin tidak valid: {exc}")
     pending_source = context.user_data.get("pending_transaction_source")
     if pending_source:
+        # A complete follow-up such as "beli kopi 1000 cash" is a new
+        # transaction, not an account-selection answer to the old prompt.
+        if _explicit_payment_hint(text) == "cash":
+            context.user_data.pop("pending_transaction_source", None)
+            return await message_handler(update, context, text_override=text)
         db = context.application.bot_data["db"]
         chat_id = str(update.effective_chat.id)
         accounts = db.list_accounts(chat_id)
