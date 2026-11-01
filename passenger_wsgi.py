@@ -32,9 +32,11 @@ from src.backup import BackupService
 from src.professional_reports import build_professional_report, render_report_html
 from src.parser import ParseError, parse_message
 from src.reports import build_expense_summary, build_income_summary, build_report
+from src.telegram_wealth import WealthTelegramMenu
 
 TITLE = "Finance Family — Sistem Manajemen Keuangan Keluarga"
 CREDIT_HTML = '<footer class="app-footer"><div class="footer-container"><div class="footer-brand">Finance Family · Sistem Manajemen Keuangan Personal & Keluarga</div><div class="footer-credit">Dibuat oleh <strong>effands</strong> ~ <a href="https://ziqva.com" target="_blank" rel="noopener">ziqva.com</a> team with love family @2026 ❤️</div></div></footer>'
+WEALTH_TELEGRAM_MENU = WealthTelegramMenu()
 
 HELP_TEXT = """🏛️ *FINANCE FAMILY — COMMAND CENTER*
 *Sistem Pembukuan & Tata Kelola Keuangan Keluarga*
@@ -3253,7 +3255,15 @@ def application(environ, start_response):
             now = datetime.now()
 
             if chat_id in settings.allowed_chat_ids:
-                if cq_data.startswith("cb:undo:"):
+                if cq_data.startswith("wealth:"):
+                    reply = WEALTH_TELEGRAM_MENU.handle_callback(chat_id, user_id, cq_data, str(update.get("update_id", "")))
+                    if reply.action == "summary":
+                        summary = WealthLedger(db).get_wealth_summary(chat_id)
+                        reply.text = f"📊 *RINGKASAN KEUANGAN*\n\n• Total kekayaan: *{format_rupiah(summary.total_wealth)}*\n• Aset likuid: *{format_rupiah(summary.liquid_assets)}*\n• Investasi: *{format_rupiah(summary.investments)}*\n• Cash: *{format_rupiah(summary.cash)}*"
+                    elif reply.action == "accounts":
+                        reply.text += "\n\nGunakan tombol di bawah untuk melihat atau mengelola akun."
+                    _send_telegram(chat_id, reply.text, reply_markup=reply.keyboard)
+                elif cq_data.startswith("cb:undo:"):
                     target_id = cq_data.split("cb:undo:")[-1]
                     if target_id == "last":
                         tx = db.find_latest_transaction(user_id, chat_id, now)
@@ -3300,18 +3310,16 @@ def application(environ, start_response):
         now = datetime.now()
 
         if chat_id in settings.allowed_chat_ids:
+            guided_reply = None if text.startswith(("/start", "/menu", "/bantuan")) else WEALTH_TELEGRAM_MENU.handle_text(chat_id, user_id, text, str(update.get("update_id", "")))
+
             # Menu / Start Command
             if text.startswith(("/start", "/menu", "/bantuan")):
-                inline_keys = {
-                    "inline_keyboard": [
-                        [{"text": "📊 Rekap Bulan Ini", "callback_data": "cb:rekap:bulan"}, {"text": "💰 Saldo Kas", "callback_data": "cb:rekap:bulan"}],
-                        [{"text": "📈 Total Pemasukan", "callback_data": "cb:income:bulan"}, {"text": "📉 Total Pengeluaran", "callback_data": "cb:expense:bulan"}],
-                        [{"text": "📅 Rekap Pekan Ini", "callback_data": "cb:rekap:minggu"}, {"text": "🏷️ Daftar Kategori", "callback_data": "cb:kategori"}],
-                        [{"text": "↩️ Undo Terakhir", "callback_data": "cb:undo:last"}, {"text": "❓ Panduan Bantuan", "callback_data": "cb:bantuan"}],
-                    ]
-                }
-                welcome = f"👋 *Halo, @{uname.lstrip('@')}!*\nSelamat datang di *Finance Family*.\n\n" + HELP_TEXT
-                _send_telegram(chat_id, welcome, reply_markup=inline_keys)
+                welcome = f"👋 *Halo, @{uname.lstrip('@')}!*\nSelamat datang di *Finance Family*."
+                reply = WEALTH_TELEGRAM_MENU.main_menu(chat_id, user_id, welcome)
+                _send_telegram(chat_id, reply.text, reply_markup=reply.keyboard)
+
+            elif guided_reply:
+                _send_telegram(chat_id, guided_reply.text, reply_markup=guided_reply.keyboard)
 
             # Income Summary Command
             elif text.startswith(("/pemasukan", "/masuk")):
