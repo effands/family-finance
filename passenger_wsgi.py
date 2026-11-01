@@ -1446,9 +1446,9 @@ def _render_wealth_page(db: Database, chat_id: str, csrf_token: str, toast_html:
             <div class='form-group'>
               <label>Jenis Transaksi Mutasi</label>
               <select class='form-control' name='operation_type'>
-                <option value='expense'>Pengeluaran Langsung dari Akun</option>
-                <option value='cash_withdrawal'>Tarik Tunai ATM (Bank &rarr; Kas Fisik)</option>
-                <option value='transfer'>Transfer Antar Akun (Bank &rarr; E-Wallet)</option>
+                <option value='expense'>Pengeluaran</option>
+                <option value='cash_withdrawal'>Tarik tunai ATM</option>
+                <option value='transfer'>Transfer antar akun</option>
               </select>
             </div>
 
