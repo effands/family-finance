@@ -410,6 +410,43 @@ a.brand-lockup:hover .brand-title {
   box-shadow: var(--shadow-xs);
 }
 
+/* Pastel nebula segmented period control */
+.dashboard-center-page .period-tabs {
+  position: relative;
+  padding: 5px;
+  gap: 4px;
+  border: 1px solid rgba(255,255,255,.72);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(219,234,254,.54), rgba(224,231,255,.38));
+  box-shadow: inset 0 1px 2px rgba(71,85,105,.10), 0 10px 24px rgba(96,165,250,.12);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.dashboard-center-page .period-tab {
+  position: relative;
+  padding: 9px 16px;
+  color: #617493;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  transition: transform .18s ease, background .18s ease, box-shadow .18s ease, color .18s ease;
+}
+.dashboard-center-page .period-tab:hover { color: #315a9a; transform: translateY(-1px); background: rgba(255,255,255,.28); }
+.dashboard-center-page .period-tab.active {
+  color: #2456c4;
+  background: linear-gradient(145deg, rgba(255,255,255,.94), rgba(232,240,255,.78));
+  border-color: rgba(255,255,255,.9);
+  box-shadow: 0 5px 12px rgba(71, 105, 175, .16), inset 0 1px 0 rgba(255,255,255,.95);
+  transform: translateY(-1px);
+}
+.dashboard-center-page .period-tab.active::after {
+  content: "";
+  position: absolute;
+  left: 22%; right: 22%; bottom: 3px;
+  height: 2px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #7c6cf2, #63b3ed);
+}
+
 /* Inline Custom Date Form */
 .custom-date-box {
   display: flex;
