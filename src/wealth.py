@@ -203,6 +203,8 @@ class WealthLedger:
                 raise WealthError("Jenis transfer tidak valid")
             if operation_type == "cash_withdrawal" and destination["account_type"] != "cash":
                 raise WealthError("Tarik tunai harus masuk ke akun Cash")
+            if operation_type == "cash_withdrawal" and source["account_type"] != "bank":
+                raise WealthError("Sumber tarik tunai harus berupa akun bank")
             if self._balance(conn, chat_id, source_account_id) < total:
                 raise InsufficientFundsError("Saldo akun sumber tidak mencukupi")
             op_id = self._operation(conn, chat_id, operation_type, description, "", transaction_date, actor_user_id, actor_username, idempotency_key)

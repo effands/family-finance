@@ -670,6 +670,26 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif reply.action == "summary":
             summary = WealthLedger(db).get_wealth_summary(chat_id)
             reply.text = f"📊 *RINGKASAN KEUANGAN*\n\n• Total kekayaan: *{format_rupiah(summary.total_wealth)}*\n• Aset likuid: *{format_rupiah(summary.liquid_assets)}*\n• Investasi: *{format_rupiah(summary.investments)}*\n• Cash: *{format_rupiah(summary.cash)}*"
+        elif reply.action in {"account_list", "investment_list"}:
+            balances = {item.account_id: item for item in WealthLedger(db).get_account_balances(chat_id, include_archived=False)}
+            accounts = [a for a in db.list_accounts(chat_id) if a.id in balances]
+            if reply.action == "investment_list":
+                accounts = [a for a in accounts if a.account_type == "investment"]
+                title = "📈 *PORTOFOLIO INVESTASI*"
+            else:
+                title = "🏦 *SALDO SEMUA AKUN*"
+            if not accounts:
+                reply.text = title + "\n\nBelum ada akun yang tercatat."
+            else:
+                lines = [title, ""]
+                for account in accounts:
+                    balance = balances[account.id].balance
+                    provider = account.provider or account.account_type
+                    lines.append(f"• *{account.name}* — {provider}\n  ID {account.id} · *{format_rupiah(balance)}*")
+                reply.text = "\n".join(lines)
+        elif reply.action == "reports":
+            rows = WealthLedger(db).list_operations(chat_id, limit=10)
+            reply.text = "📋 *MUTASI TERAKHIR*\n\n" + ("\n".join(f"• {row['description']} — {row['operation_type']} ({row['transaction_date']})" for row in rows) if rows else "Belum ada mutasi.")
         return await query.message.reply_text(reply.text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(reply.keyboard["inline_keyboard"]))
 
     # Receipt callbacks

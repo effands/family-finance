@@ -43,6 +43,16 @@ class WealthTelegramMenu:
         with self._lock:
             self._sessions.pop((str(chat_id), str(user_id)), None)
 
+    @staticmethod
+    def _account_fields():
+        return ("name", "account_type", "provider", "holder_name", "account_identifier", "opening_balance")
+
+    def _advance_account_step(self, session):
+        fields = self._account_fields()
+        while session.step < len(fields) and session.values.get(fields[session.step]):
+            session.step += 1
+        return session.step
+
     def main_menu(self, chat_id, user_id, greeting=""):
         self._session(chat_id, user_id)
         prefix = (greeting + "\n\n") if greeting else ""
@@ -56,7 +66,7 @@ class WealthTelegramMenu:
     def begin_account_request(self, chat_id, user_id, values=None):
         session = self._session(chat_id, user_id)
         session.flow, session.values = "wealth:account:add", dict(values or {})
-        fields = ("name", "account_type", "provider", "holder_name", "account_identifier", "opening_balance")
+        fields = self._account_fields()
         session.step = next((index for index, field in enumerate(fields) if not session.values.get(field)), len(fields))
         if session.step >= len(fields):
             return TelegramReply("🔎 Data akun sudah lengkap. Periksa lalu konfirmasi.", self._keyboard([[('✅ Konfirmasi', 'wealth:confirm'), ('❌ Batalkan', 'wealth:cancel')]]), action="confirm", payload=dict(session.values))
@@ -113,7 +123,7 @@ class WealthTelegramMenu:
             "settings": [("⭐ Atur Akun Default", "wealth:settings:default"), ("❓ Panduan", "wealth:help")],
         }
         if callback_data.endswith(":list") or callback_data in {"wealth:summary", "wealth:report:recent"}:
-            action = "account_list" if callback_data == "wealth:account:list" else screen
+            action = "account_list" if callback_data == "wealth:account:list" else "investment_list" if callback_data == "wealth:investment:list" else screen
             return TelegramReply(title, self._keyboard([[("⬅️ Kembali", "wealth:back"), ("🏠 Menu Utama", "wealth:home")]]), action=action, payload={"update_id": update_id})
         rows = [[item] for item in keyboards.get(screen, [])]
         if callback_data == "wealth:transfer":
@@ -151,6 +161,8 @@ class WealthTelegramMenu:
         else:
             session.values[f"step_{session.step}"] = value
         session.step += 1
+        if session.flow == "wealth:account:add":
+            self._advance_account_step(session)
         if session.flow == "wealth:account:add" and session.step >= 6:
             return TelegramReply("🔎 *KONFIRMASI AKUN BARU*\n\n" + "\n".join(f"• {key}: `{val}`" for key, val in session.values.items()) + "\n\nSimpan akun ini?", self._keyboard([[('✅ Konfirmasi', 'wealth:confirm'), ('❌ Batalkan', 'wealth:cancel')]]), action="confirm", payload=dict(session.values))
         if session.flow == "wealth:investment:add" and session.step >= 5:

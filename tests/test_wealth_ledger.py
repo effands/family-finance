@@ -108,6 +108,13 @@ def test_atm_requires_cash_destination_and_transfer_fee_is_expense(tmp_path):
     assert summary.total_wealth == 99_995_000
 
 
+def test_atm_requires_bank_source(tmp_path):
+    db, _, cash, investment = setup_accounts(tmp_path)
+    ledger = WealthLedger(db)
+    with pytest.raises(Exception, match="bank"):
+        ledger.create_transfer("family", investment.id, cash.id, 1_000_000, "ATM salah", date(2026, 11, 1), "u", "Ayah", operation_type="cash_withdrawal", idempotency_key="atm-investment")
+
+
 def test_idr_parser_rejects_fractional_or_ambiguous_amounts():
     assert parse_idr_amount("Rp 1.000.000") == 1_000_000
     with pytest.raises(WealthError):

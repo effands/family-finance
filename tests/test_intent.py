@@ -16,6 +16,12 @@ def test_transfer_and_atm_have_their_own_intent():
     assert classify_finance_intent("transfer dari BCA ke GoPay") == "transfer"
 
 
+def test_account_intent_can_request_missing_balance_and_detect_provider_type():
+    assert classify_finance_intent("tambah bank baru BCA atas nama EFENDI") == "account_add"
+    assert extract_account_fields("tambah e-wallet GoPay atas nama EFENDI saldo 500rb")["account_type"] == "ewallet"
+    assert extract_account_fields("buat rekening BCA saldo 1,5 juta atas nama EFENDI")["opening_balance"] == "1500000"
+
+
 def test_account_fields_are_extracted_from_one_sentence():
     fields = extract_account_fields("aku mau input bank baru BCA atas nama EFENDI saldo 17.516.328 norek 1234")
     assert fields["provider"] == "BCA"

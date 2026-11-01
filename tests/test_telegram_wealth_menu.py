@@ -141,3 +141,6 @@ def test_account_request_skips_fields_already_read_from_sentence():
         "holder_name": "EFENDI", "opening_balance": "17516328",
     })
     assert "nomor rekening" in reply.text.casefold()
+    reply = menu.handle_text("chat-1", "user-1", "1234")
+    assert reply.action == "confirm"
+    assert reply.payload["opening_balance"] == "17516328"
