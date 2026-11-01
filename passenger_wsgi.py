@@ -3285,6 +3285,25 @@ def application(environ, start_response):
                             reply.text = f"✅ Mutasi berhasil dicatat: *{format_rupiah(amount)}*"
                         except (KeyError, ValueError, WealthError, InsufficientFundsError) as exc:
                             reply.text = f"❌ Mutasi ditolak: {exc}"
+                    elif reply.action == "reconcile":
+                        values = reply.payload
+                        try:
+                            WealthLedger(db).reconcile_account(chat_id, int(values["account_id"]), parse_idr_amount(values["actual_balance"], allow_zero=True), values["reason"], now.date(), user_id, sender.get("username") or sender.get("first_name") or "user")
+                            reply.text = "✅ Rekonsiliasi saldo berhasil disimpan."
+                        except (KeyError, ValueError, WealthError) as exc:
+                            reply.text = f"❌ Rekonsiliasi ditolak: {exc}"
+                    elif reply.action == "archive":
+                        try:
+                            WealthLedger(db).archive_account(chat_id, int(reply.payload["account_id"]), user_id)
+                            reply.text = "✅ Akun berhasil diarsipkan."
+                        except (KeyError, ValueError, WealthError) as exc:
+                            reply.text = f"❌ Akun tidak diarsipkan: {exc}"
+                    elif reply.action == "default_account":
+                        try:
+                            WealthLedger(db).set_default_account(chat_id, reply.payload["operation_kind"], int(reply.payload["account_id"]))
+                            reply.text = "✅ Akun default berhasil disimpan."
+                        except (KeyError, ValueError, WealthError) as exc:
+                            reply.text = f"❌ Akun default tidak disimpan: {exc}"
                     elif reply.action == "accounts":
                         reply.text += "\n\nGunakan tombol di bawah untuk melihat atau mengelola akun."
                     _send_telegram(chat_id, reply.text, reply_markup=reply.keyboard)

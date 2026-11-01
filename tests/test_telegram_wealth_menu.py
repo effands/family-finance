@@ -85,3 +85,34 @@ def test_atm_withdrawal_flow_uses_cash_destination():
         reply = menu.handle_text("chat-1", "user-1", value)
     assert reply.action == "confirm"
     assert reply.payload["operation_type"] == "cash_withdrawal"
+
+
+def test_reconcile_and_default_flows_require_confirmation():
+    menu = WealthTelegramMenu()
+    menu.handle_callback("chat-1", "user-1", "wealth:account:reconcile")
+    for value in ["1", "97000000", "Saldo m-banking"]:
+        reply = menu.handle_text("chat-1", "user-1", value)
+    assert reply.action == "confirm"
+    assert reply.payload["actual_balance"] == "97000000"
+    menu.handle_callback("chat-1", "user-1", "wealth:settings:default")
+    for value in ["expense", "1"]:
+        reply = menu.handle_text("chat-1", "user-1", value)
+    assert reply.action == "confirm"
+    assert reply.payload["operation_kind"] == "expense"
+
+
+def test_archive_flow_returns_archive_action():
+    menu = WealthTelegramMenu()
+    menu.handle_callback("chat-1", "user-1", "wealth:account:archive")
+    reply = menu.handle_text("chat-1", "user-1", "3")
+    assert reply.action == "confirm"
+    assert reply.payload["account_id"] == "3"
+
+
+def test_investment_flow_creates_investment_account_with_confirmation():
+    menu = WealthTelegramMenu()
+    menu.handle_callback("chat-1", "user-1", "wealth:investment:add")
+    for value in ["SBN ST014", "Bank Mandiri", "Keluarga", "ST014", "10000000"]:
+        reply = menu.handle_text("chat-1", "user-1", value)
+    assert reply.action == "confirm"
+    assert reply.payload["account_type"] == "investment"
