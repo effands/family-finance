@@ -38,12 +38,14 @@ def extract_account_fields(text: str) -> dict:
         fields["account_type"] = "investment"
     elif "cash" in normalized or "tunai" in normalized:
         fields["account_type"] = "cash"
-    provider = re.search(r"(?:bank|rekening|akun)\s+(?:baru\s+)?(?:yaitu\s+|adalah\s+)?([A-Za-z][A-Za-z0-9 ._-]{1,40}?)(?=\s+(?:atas nama|nama|saldo|no|nomor|norek|rekening|$))", value, re.I)
+    provider = re.search(r"(?:bank|rekening|akun)\s+(?:baru\s+)?(?:yaitu\s+|adalah\s+)?([A-Za-z][A-Za-z0-9 ._-]{1,40}?)(?=\s+(?:atas nama|nama|saldo|no|nomor|norek|rekening)|\s+\d|$)", value, re.I)
     if not provider:
         provider = re.search(r"(?:tambahkan|tambah|input|add)\s+(?:akun\s+)?(dana|gopay|ovo|shopeepay|shopee\s*pay|linkaja|jenius|paypal)\b", value, re.I)
     holder = re.search(r"(?:atas nama|nama pemilik)\s+([A-Za-z][A-Za-z .'-]{1,60}?)(?=\s+(?:saldo|rp|no|nomor|norek|rekening)|$)", value, re.I)
     balance = re.search(r"(?:saldo(?: awal)?|rp)\s*[:=]?\s*([\d.,]+)\s*(?:jt|juta|rb|ribu)?", value, re.I)
     identifier = re.search(r"\b(?:no(?:mor)?\s+rekening|norek|rekening|account\s+id)\s*[:=]?\s*([0-9][0-9 -]{2,30})\b", value, re.I)
+    if not identifier:
+        identifier = re.search(r"\b(?:bank|rekening|akun)\s+(?:baru\s+)?[A-Za-z][A-Za-z .'-]*?\s+([0-9][0-9 -]{2,30})\b", value, re.I)
     if provider:
         fields["provider"] = re.sub(r"\s+", " ", provider.group(1).strip())
         fields["name"] = fields["provider"]

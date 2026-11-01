@@ -67,6 +67,9 @@ class WealthTelegramMenu:
     def begin_account_request(self, chat_id, user_id, values=None):
         session = self._session(chat_id, user_id)
         session.flow, session.values = "wealth:account:add", dict(values or {})
+        for field in ("name", "provider", "holder_name"):
+            if session.values.get(field):
+                session.values[field] = str(session.values[field]).strip().upper()
         fields = self._account_fields()
         session.step = next((index for index, field in enumerate(fields) if not session.values.get(field)), len(fields))
         if session.step >= len(fields):

@@ -55,3 +55,10 @@ def test_explicit_dana_provider_is_extracted_from_add_sentence():
     assert fields["name"] == "DANA"
     assert fields["holder_name"] == "EFENDI"
     assert fields["opening_balance"] == "128000"
+
+
+def test_bank_number_is_not_absorbed_into_provider_name():
+    fields = extract_account_fields("tambah akun bank mandiri 1440016945088 saldo 211645141 atas nama efendi")
+    assert fields["provider"] == "bank mandiri"
+    assert fields["name"] == "bank mandiri"
+    assert fields["account_identifier"] == "1440016945088"
