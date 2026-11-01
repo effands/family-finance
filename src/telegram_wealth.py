@@ -70,7 +70,9 @@ class WealthTelegramMenu:
         fields = self._account_fields()
         session.step = next((index for index, field in enumerate(fields) if not session.values.get(field)), len(fields))
         if session.step >= len(fields):
-            return TelegramReply("🔎 Data akun sudah lengkap. Periksa lalu konfirmasi.", self._keyboard([[('✅ Konfirmasi', 'wealth:confirm'), ('❌ Batalkan', 'wealth:cancel')]]), action="confirm", payload=dict(session.values))
+            labels = {"name": "Nama akun", "account_type": "Jenis", "provider": "Provider", "holder_name": "Pemilik", "account_identifier": "Rekening/ID", "opening_balance": "Saldo awal"}
+            details = "\n".join(f"• {labels[key]}: {session.values[key]}" for key in fields)
+            return TelegramReply("🔎 *PERIKSA DATA AKUN*\n\n" + details + "\n\nSimpan data ini?", self._keyboard([[('✅ Konfirmasi', 'wealth:confirm'), ('❌ Batalkan', 'wealth:cancel')]]), action="confirm", payload=dict(session.values))
         prompts = ["Ketik nama akun/panggilan", "Ketik jenis akun: bank, ewallet, cash, atau investment", "Ketik nama bank/provider", "Ketik nama pemilik akun", "Ketik nomor rekening/ID (boleh 4 digit terakhir)", "Ketik saldo awal dalam rupiah"]
         return TelegramReply("📝 Lengkapi data:\n" + prompts[session.step], self._keyboard([[('❌ Batalkan', 'wealth:cancel'), ('🏠 Menu Utama', 'wealth:home')]]), action="input", payload=session.values)
 
