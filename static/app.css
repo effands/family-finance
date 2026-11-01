@@ -746,6 +746,12 @@ a.brand-lockup:hover .brand-title {
   letter-spacing: 0.02em;
   flex-shrink: 0;
 }
+.user-avatar.tone-indigo { background: linear-gradient(135deg, #4f46e5, #818cf8); }
+.user-avatar.tone-emerald { background: linear-gradient(135deg, #059669, #34d399); }
+.user-avatar.tone-coral { background: linear-gradient(135deg, #e11d48, #fb7185); }
+.user-avatar.tone-amber { background: linear-gradient(135deg, #d97706, #fbbf24); }
+.user-avatar.tone-violet { background: linear-gradient(135deg, #7c3aed, #c084fc); }
+.user-avatar.tone-teal { background: linear-gradient(135deg, #0f766e, #2dd4bf); }
 
 /* Filter Card Controls */
 .filter-card {
