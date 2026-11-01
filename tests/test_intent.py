@@ -62,3 +62,9 @@ def test_bank_number_is_not_absorbed_into_provider_name():
     assert fields["provider"] == "bank mandiri"
     assert fields["name"] == "bank mandiri"
     assert fields["account_identifier"] == "1440016945088"
+
+
+def test_danamon_is_not_mistaken_for_dana_wallet():
+    fields = extract_account_fields("tambah akun bank danamon 003636204954 saldo 404118 nama efendi")
+    assert fields["account_type"] == "bank"
+    assert fields["provider"] == "bank danamon"

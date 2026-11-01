@@ -28,7 +28,7 @@ def extract_account_fields(text: str) -> dict:
     value = " ".join((text or "").split())
     normalized = value.casefold()
     fields = {"account_type": "bank"}
-    if any(word in normalized for word in ("ewallet", "e-wallet", "gopay", "dana", "shopeepay", "ovo")):
+    if re.search(r"\b(?:ewallet|e-wallet|gopay|dana|shopeepay|ovo)\b", normalized):
         fields["account_type"] = "ewallet"
     elif any(word in normalized for word in ("crypto", "bitcoin", "ethereum")):
         fields["account_type"] = "investment"
