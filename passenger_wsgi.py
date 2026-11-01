@@ -499,13 +499,13 @@ def _rows_html(rows, active_chat_id=""):
         desc_escaped = html.escape(x.description)
         cat_escaped = html.escape(x.category)
         desc_js = desc_escaped.replace("'", "\\'")
+        display_id = f"WL-{str(x.id)[:8]}" if not isinstance(x.id, int) else str(x.id)
         detail_data = getattr(x, "detail_data", {})
-        detail_html = f"<div class='detail-grid'><div><b>Sumber</b><br>{html.escape(str(detail_data.get('source_account') or '-'))}</div><div><b>Tujuan</b><br>{html.escape(str(detail_data.get('destination_account') or '-'))}</div><div><b>Bank tujuan</b><br>{html.escape(str(detail_data.get('destination_provider') or '-'))}</div><div><b>Rekening tujuan</b><br>{html.escape(str(detail_data.get('destination_identifier') or '-'))}</div></div>"
-        detail_action = f"<details class='tx-detail'><summary class='btn btn-ghost btn-sm' title='Lihat detail transaksi' aria-label='Lihat detail transaksi'>{_svg_icon('eye')}</summary>{detail_html}</details>"
+        detail_payload = {"id": display_id, "date": x.transaction_date.isoformat(), "type": "Pemasukan" if is_inc else "Pengeluaran", "category": x.category, "description": x.description, "amount": format_rupiah(x.amount), "user": x.username or x.user_id or "Admin", "source": detail_data.get("source_account") or "-", "destination": detail_data.get("destination_account") or "-", "destination_provider": detail_data.get("destination_provider") or "-", "destination_identifier": detail_data.get("destination_identifier") or "-"}
+        detail_json = html.escape(json.dumps(detail_payload, ensure_ascii=False), quote=True)
+        detail_action = f"<button class='btn btn-ghost btn-sm' type='button' title='Lihat detail transaksi' aria-label='Lihat detail transaksi' onclick='openDetailModal({detail_json})'>{_svg_icon('eye')}</button>"
         edit_action = "" if not isinstance(x.id, int) else f"<button class='btn btn-ghost btn-sm' type='button' title='Edit transaksi' aria-label='Edit transaksi' onclick=\"openEditModal({x.id}, '{x.type}', {x.amount}, {json.dumps(x.description)}, {json.dumps(x.category)}, '{x.transaction_date.isoformat()}', {json.dumps(x.username or x.user_id or 'Admin')})\">{_svg_icon('edit')}</button>"
         delete_action = "" if not isinstance(x.id, int) else f"<button class='btn btn-ghost btn-sm' type='button' title='Hapus transaksi ini' onclick=\"confirmDelete({x.id}, '{desc_js}', '{format_rupiah(x.amount)}')\">{_svg_icon('trash')}</button>"
-        display_id = f"WL-{str(x.id)[:8]}" if not isinstance(x.id, int) else str(x.id)
-
         output.append(f"""<tr class="tx-row" data-id="{x.id}">
           <td class="tabular-nums" style="color: var(--ink-muted); font-size: 12px; font-weight: 600;" title="ID internal: {html.escape(str(x.id))}">#{display_id}</td>
           <td class="tabular-nums" style="white-space: nowrap; font-weight: 500;">{format_date_id(x.transaction_date)}</td>
@@ -2919,6 +2919,22 @@ def _dashboard_response(environ, start_response):
   {CREDIT_HTML}
 </main>
 
+<!-- Modal: Detail Transaksi -->
+<div class="modal-overlay" id="modal-detail-tx">
+  <div class="modal-dialog detail-modal-dialog">
+    <div class="modal-header"><div><span class="brand-badge">DETAIL TRANSAKSI</span><h3 id="detail-modal-title">Rincian Mutasi</h3></div><button class="modal-close-btn" type="button" onclick="closeModal('modal-detail-tx')">&times;</button></div>
+    <div class="modal-body">
+      <div class="detail-hero"><div><small>Nominal</small><strong id="detail-amount"></strong></div><span id="detail-type" class="badge-type"></span></div>
+      <div class="detail-card-grid">
+        <div class="detail-card"><small>ID</small><strong id="detail-id"></strong></div><div class="detail-card"><small>Tanggal</small><strong id="detail-date"></strong></div>
+        <div class="detail-card"><small>Kategori</small><strong id="detail-category"></strong></div><div class="detail-card"><small>Pencatat</small><strong id="detail-user"></strong></div>
+      </div>
+      <div class="detail-description"><small>Deskripsi</small><p id="detail-description"></p></div>
+      <div class="detail-transfer-grid"><div><small>Sumber dana</small><strong id="detail-source"></strong></div><div><small>Tujuan / Penerima</small><strong id="detail-destination"></strong></div><div><small>Bank tujuan</small><strong id="detail-provider"></strong></div><div><small>Rekening tujuan</small><strong id="detail-identifier"></strong></div></div>
+    </div><div class="modal-footer"><button class="btn btn-primary" type="button" onclick="closeModal('modal-detail-tx')">Tutup</button></div>
+  </div>
+</div>
+
 <!-- Modal: Tambah Transaksi Manual -->
 <div class="modal-overlay" id="modal-add-tx">
   <div class="modal-dialog">
@@ -3091,6 +3107,13 @@ function closeModal(id) {{
 
 function openAddModal() {{ openModal('modal-add-tx'); }}
 function openImportModal() {{ openModal('modal-import-csv'); }}
+function openDetailModal(data) {{
+  const set = (id, value) => document.getElementById(id).textContent = value || '-';
+  set('detail-modal-title', data.description || 'Rincian Mutasi'); set('detail-amount', data.amount); set('detail-type', data.type);
+  set('detail-id', data.id); set('detail-date', data.date); set('detail-category', data.category); set('detail-user', data.user);
+  set('detail-description', data.description); set('detail-source', data.source); set('detail-destination', data.destination);
+  set('detail-provider', data.destination_provider); set('detail-identifier', data.destination_identifier); openModal('modal-detail-tx');
+}}
 function openEditModal(id, type, amount, description, category, transactionDate, username) {{
   document.getElementById('edit-tx-id').value = id;
   document.getElementById('edit-tx-type').value = type;

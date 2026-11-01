@@ -950,6 +950,15 @@ a.brand-lockup:hover .brand-title {
   align-items: center;
   gap: 6px;
 }
+.detail-modal-dialog { max-width: 680px; }
+.detail-hero { display:flex; justify-content:space-between; align-items:center; padding:18px; border-radius:18px; background:linear-gradient(135deg,#eef6ff,#f7f1ff); margin-bottom:16px; }
+.detail-hero small, .detail-card small, .detail-description small, .detail-transfer-grid small { display:block; color:var(--ink-muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; font-weight:700; margin-bottom:5px; }
+.detail-hero strong { display:block; color:var(--brand-primary); font-size:28px; }
+.detail-card-grid, .detail-transfer-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.detail-card, .detail-transfer-grid > div, .detail-description { padding:13px 14px; border:1px solid var(--border-light); border-radius:14px; background:rgba(248,250,252,.75); }
+.detail-card strong, .detail-transfer-grid strong { color:var(--ink-primary); font-size:14px; word-break:break-word; }
+.detail-description { margin:10px 0; } .detail-description p { margin:0; color:var(--ink-primary); font-weight:600; }
+@media (max-width:600px) { .detail-card-grid, .detail-transfer-grid { grid-template-columns:1fr; } }
 
 /* Empty State */
 .empty-state-box {
