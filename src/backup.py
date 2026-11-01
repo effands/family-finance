@@ -21,6 +21,9 @@ TABLES = (
     "ledger_operations",
     "ledger_entries",
     "account_preferences",
+    "user_account_preferences",
+    "transaction_details",
+    "transaction_items",
     "legacy_ledger_links",
 )
 SCHEMA_VERSION = 1
@@ -68,6 +71,12 @@ class BackupService:
                     rows = conn.execute("SELECT * FROM ledger_entries WHERE chat_id=? ORDER BY id", (chat_id,)).fetchall()
                 elif table == "account_preferences":
                     rows = conn.execute("SELECT * FROM account_preferences WHERE chat_id=? ORDER BY operation_kind", (chat_id,)).fetchall()
+                elif table == "user_account_preferences":
+                    rows = conn.execute("SELECT * FROM user_account_preferences WHERE chat_id=? ORDER BY user_id, operation_kind", (chat_id,)).fetchall()
+                elif table == "transaction_details":
+                    rows = conn.execute("SELECT d.* FROM transaction_details d JOIN transactions t ON t.id=d.transaction_id WHERE t.chat_id=? ORDER BY d.transaction_id", (chat_id,)).fetchall()
+                elif table == "transaction_items":
+                    rows = conn.execute("SELECT i.* FROM transaction_items i JOIN transactions t ON t.id=i.transaction_id WHERE t.chat_id=? ORDER BY i.transaction_id, i.id", (chat_id,)).fetchall()
                 else:
                     rows = conn.execute("SELECT * FROM legacy_ledger_links WHERE chat_id=? ORDER BY transaction_id", (chat_id,)).fetchall()
                 snapshot[table] = [dict(row) for row in rows]
@@ -163,7 +172,9 @@ class BackupService:
             try:
                 conn.execute("BEGIN IMMEDIATE")
                 if mode == "replace":
-                    for table in ("legacy_ledger_links", "account_preferences", "ledger_entries", "ledger_operations", "transactions", "financial_accounts"):
+                    conn.execute("DELETE FROM transaction_items WHERE transaction_id IN (SELECT id FROM transactions WHERE chat_id=?)", (chat_id,))
+                    conn.execute("DELETE FROM transaction_details WHERE transaction_id IN (SELECT id FROM transactions WHERE chat_id=?)", (chat_id,))
+                    for table in ("legacy_ledger_links", "user_account_preferences", "account_preferences", "ledger_entries", "ledger_operations", "transactions", "financial_accounts"):
                         conn.execute("DELETE FROM " + table + " WHERE chat_id=?", (chat_id,))
                 for table in TABLES:
                     rows = snapshot[table]

@@ -1,4 +1,5 @@
 import sqlite3
+import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from .categorizer import default_categories
@@ -13,6 +14,7 @@ class Database:
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         c = sqlite3.connect(self.path)
         c.row_factory = sqlite3.Row
+        c.execute("PRAGMA foreign_keys = ON")
         return c
 
     def initialize(self):
@@ -40,6 +42,18 @@ class Database:
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS transaction_details (
+                    transaction_id INTEGER PRIMARY KEY REFERENCES transactions(id) ON DELETE CASCADE,
+                    details_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS transaction_items (
+                    id INTEGER PRIMARY KEY,
+                    transaction_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL, quantity REAL NOT NULL DEFAULT 1,
+                    unit TEXT, unit_price INTEGER NOT NULL DEFAULT 0,
+                    subtotal INTEGER NOT NULL DEFAULT 0, category TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS ix_items_transaction ON transaction_items(transaction_id);
                 CREATE TABLE IF NOT EXISTS financial_accounts (
                     id INTEGER PRIMARY KEY,
                     chat_id TEXT NOT NULL,
@@ -92,6 +106,13 @@ class Database:
                     account_id INTEGER NOT NULL REFERENCES financial_accounts(id),
                     PRIMARY KEY (chat_id, operation_kind)
                 );
+                CREATE TABLE IF NOT EXISTS user_account_preferences (
+                    chat_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    operation_kind TEXT NOT NULL,
+                    account_id INTEGER NOT NULL REFERENCES financial_accounts(id),
+                    PRIMARY KEY (chat_id, user_id, operation_kind)
+                );
                 CREATE TABLE IF NOT EXISTS legacy_ledger_links (
                     transaction_id INTEGER PRIMARY KEY,
                     chat_id TEXT NOT NULL,
@@ -116,6 +137,28 @@ class Database:
                 (x.user_id, x.username, x.chat_id, x.type, x.amount, x.description, x.category, x.transaction_date.isoformat(), x.created_at.isoformat()),
             )
             return Transaction(cur.lastrowid, x.user_id, x.username, x.chat_id, x.type, x.amount, x.description, x.category, x.transaction_date, x.created_at)
+
+    def add_transaction_with_details(self, x: Transaction, details: dict) -> Transaction:
+        """Atomically create a transaction and its receipt metadata/items."""
+        with self._conn() as c:
+            cur = c.execute(
+                "INSERT INTO transactions(user_id,username,chat_id,type,amount,description,category,transaction_date,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (x.user_id, x.username, x.chat_id, x.type, x.amount, x.description, x.category, x.transaction_date.isoformat(), x.created_at.isoformat()),
+            )
+            tx_id = cur.lastrowid
+            c.execute("INSERT INTO transaction_details(transaction_id, details_json) VALUES (?,?)", (tx_id, json.dumps(details, ensure_ascii=False)))
+            c.executemany("INSERT INTO transaction_items(transaction_id,name,quantity,unit,unit_price,subtotal,category) VALUES (?,?,?,?,?,?,?)", [(tx_id, i["name"], i["quantity"], i.get("unit"), i["unit_price"], i["subtotal"], i.get("category", "")) for i in details.get("items", [])])
+            return Transaction(tx_id, x.user_id, x.username, x.chat_id, x.type, x.amount, x.description, x.category, x.transaction_date, x.created_at)
+
+    def add_transaction_details(self, transaction_id: int, details: dict) -> None:
+        with self._conn() as c:
+            c.execute("INSERT OR REPLACE INTO transaction_details(transaction_id, details_json) VALUES (?,?)", (transaction_id, json.dumps(details, ensure_ascii=False)))
+            c.execute("DELETE FROM transaction_items WHERE transaction_id=?", (transaction_id,))
+            c.executemany("INSERT INTO transaction_items(transaction_id,name,quantity,unit,unit_price,subtotal,category) VALUES (?,?,?,?,?,?,?)", [(transaction_id, i["name"], i["quantity"], i.get("unit"), i["unit_price"], i["subtotal"], i.get("category", "")) for i in details.get("items", [])])
+
+    def list_transaction_items(self, transaction_id: int) -> list[dict]:
+        with self._conn() as c:
+            return [dict(r) for r in c.execute("SELECT name,quantity,unit,unit_price,subtotal,category FROM transaction_items WHERE transaction_id=? ORDER BY id", (transaction_id,)).fetchall()]
 
     @staticmethod
     def _account_from_row(row):
@@ -233,7 +276,7 @@ class Database:
             return self._row(
                 c.execute(
                     "SELECT * FROM transactions WHERE user_id=? AND chat_id=? AND created_at>=? ORDER BY created_at DESC LIMIT 1",
-                    (user_id, chat_id, (now - timedelta(minutes=5)).isoformat()),
+                    (user_id, chat_id, (now - timedelta(hours=24)).isoformat()),
                 ).fetchone()
             )
 

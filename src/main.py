@@ -20,12 +20,12 @@ from .categorizer import categorize
 from .config import load_settings
 from .database import Database
 from .formatting import format_rupiah, render_confirmation
-from .models import FinancialAccount, Transaction
+from .models import Category, FinancialAccount, Transaction
 from .parser import ParseError, parse_message
 from .rate_limit import RateLimiter
-from .receipt_ai import GeminiKeyPool, extract_receipt, transcribe_audio
+from .receipt_ai import GeminiKeyPool, extract_receipt, interpret_text, transcribe_audio
 from .reports import build_expense_summary, build_income_summary, build_report
-from .wealth import WealthLedger, WealthError, InsufficientFundsError
+from .wealth import WealthLedger, WealthError, InsufficientFundsError, parse_idr_amount
 from .telegram_wealth import WealthTelegramMenu
 
 MENU_KEYBOARD = ReplyKeyboardMarkup(
@@ -108,6 +108,19 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
+    if context.user_data.get("receipt_editing"):
+        pending = context.user_data.get("pending_receipt")
+        if pending:
+            try:
+                corrected = parse_message(text, datetime.now(), context.application.bot_data["settings"].timezone)
+                pending.update({"amount": corrected.amount, "description": corrected.description, "date": corrected.transaction_date.isoformat()})
+                pending["category"] = categorize(corrected.description, context.application.bot_data["db"].list_categories()).name
+                context.user_data.pop("receipt_editing", None)
+                keys = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Simpan Mutasi", callback_data="receipt:save"), InlineKeyboardButton("✏️ Koreksi", callback_data="receipt:edit")], [InlineKeyboardButton("❌ Batalkan", callback_data="receipt:cancel")]])
+                return await update.message.reply_text(f"✏️ *Struk diperbarui*\nTotal: *{format_rupiah(pending['amount'])}*\nDeskripsi: {pending['description']}\nKategori: {pending['category']}\n\nPeriksa lalu simpan.", parse_mode="Markdown", reply_markup=keys)
+            except ParseError as exc:
+                return await update.message.reply_text(f"❓ Koreksi belum terbaca: {exc}\nContoh: `45000 belanja rumah`", parse_mode="Markdown")
+        context.user_data.pop("receipt_editing", None)
     guided = context.application.bot_data["wealth_menu"].handle_text(str(update.effective_chat.id), str(update.effective_user.id), text, str(update.update_id))
     if guided:
         return await update.message.reply_text(guided.text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(guided.keyboard["inline_keyboard"]))
@@ -128,28 +141,66 @@ async def menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await message_handler(update, context)
 
 
-async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, text_override=None):
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, text_override=None, reply_message=None):
     s = context.application.bot_data["settings"]
     if not allowed(update, s):
         return
     user = update.effective_user
+    reply = reply_message or update.message
     chat_id = str(update.effective_chat.id)
     now = datetime.now()
 
     if not context.application.bot_data["limiter"].allow(str(user.id), now):
-        return await update.message.reply_text("⏳ Terlalu banyak pesan dalam waktu singkat. Mohon tunggu sebentar.")
+        return await reply.reply_text("⏳ Terlalu banyak pesan dalam waktu singkat. Mohon tunggu sebentar.")
 
     text = text_override if text_override is not None else update.message.text
+    db: Database = context.application.bot_data["db"]
+    ai_category = None
+    should_use_ai = bool(s.gemini_api_keys and len(text or "") >= 80)
     try:
+        if should_use_ai:
+            raise ParseError("Pesan panjang akan dipahami oleh Gemini")
         parsed = parse_message(text, now, s.timezone)
     except ParseError as e:
-        return await update.message.reply_text(f"❓ {e}")
-
-    db: Database = context.application.bot_data["db"]
-    category = categorize(parsed.description, db.list_categories())
+        # Natural-language fallback/preferred path for longer messages.
+        if (len(text or "") < 45 and not should_use_ai) or not s.gemini_api_keys:
+            try:
+                parsed = parse_message(text, now, s.timezone)
+            except ParseError:
+                return await reply.reply_text(f"❓ {e}")
+        else:
+            try:
+                ai = await asyncio.to_thread(
+                    interpret_text, text, [c.name for c in db.list_categories()],
+                    s.gemini_api_keys, s.gemini_model, context.application.bot_data["gemini_pool"]
+                )
+                parsed = type("AIParsed", (), {
+                    "type": ai["type"], "amount": ai["amount"], "description": ai["description"],
+                    "transaction_date": date.fromisoformat(ai["date"]),
+                })()
+                ai_category = ai
+            except Exception:
+                if should_use_ai:
+                    # A valid short-format interpretation is safer than rejecting a transaction.
+                    try:
+                        parsed = parse_message(text, now, s.timezone)
+                    except ParseError:
+                        return await reply.reply_text(f"❓ {e}\nCoba tulis nominal dengan format seperti `makan 25rb`, atau pastikan Gemini aktif.", parse_mode="Markdown")
+                else:
+                    return await reply.reply_text(f"❓ {e}\nCoba tulis nominal dengan format seperti `makan 25rb`, atau pastikan Gemini aktif.", parse_mode="Markdown")
+    if ai_category:
+        existing = {c.name.casefold(): c for c in db.list_categories()}
+        safe_name = " ".join(ai_category["category"].split())[:80]
+        safe_keywords = [" ".join(k.split())[:40] for k in ai_category.get("keywords", []) if k.strip()][:5]
+        category = existing.get(safe_name.casefold())
+        if category is None and safe_name.casefold() != "lain-lain" and safe_name:
+            category = Category(safe_name, safe_keywords, "📁", ai_category["type"])
+            db.upsert_category(category)
+    else:
+        category = categorize(parsed.description, db.list_categories())
     uname = user.username or user.first_name or "user"
     wealth_ledger = WealthLedger(db)
-    wealth_account = wealth_ledger.get_default_account(chat_id, parsed.type)
+    wealth_account = wealth_ledger.get_default_account(chat_id, parsed.type, str(user.id))
     if wealth_account:
         try:
             if parsed.type == "income":
@@ -157,13 +208,13 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, te
             else:
                 op = wealth_ledger.create_expense(chat_id, wealth_account.id, parsed.amount, parsed.description, category.name, parsed.transaction_date, str(user.id), uname, idempotency_key=f"tg:{update.update_id}")
             summary = wealth_ledger.get_wealth_summary(chat_id)
-            return await update.message.reply_text(
+            return await reply.reply_text(
                 f"✅ *Mutasi tercatat dari {wealth_account.name}*\n{parsed.description}: *{format_rupiah(parsed.amount)}*\n"
                 f"Saldo total tercatat: *{format_rupiah(summary.total_wealth)}*\nRef: `{op.id[:10]}`",
                 parse_mode="Markdown",
             )
         except (WealthError, InsufficientFundsError) as exc:
-            return await update.message.reply_text(f"❌ Mutasi ditolak: {exc}. Sumber dana default: {wealth_account.name}.")
+            return await reply.reply_text(f"❌ Mutasi ditolak: {exc}. Sumber dana default: {wealth_account.name}.")
     tx = db.add_transaction(
         Transaction(
             None,
@@ -193,10 +244,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, te
     action_keys = InlineKeyboardMarkup([
         [
             InlineKeyboardButton("↩️ Batalkan / Undo", callback_data=f"cb:undo:{tx.id}"),
+            InlineKeyboardButton("✏️ Edit", callback_data=f"cb:edit:{tx.id}"),
+            InlineKeyboardButton("🗑️ Hapus", callback_data=f"cb:delete:{tx.id}"),
             InlineKeyboardButton("📊 Rekap Saldo", callback_data="cb:rekap:bulan"),
         ]
     ])
-    await update.message.reply_text(card_text, parse_mode="Markdown", reply_markup=action_keys)
+    await reply.reply_text(card_text, parse_mode="Markdown", reply_markup=action_keys)
 
 
 async def income_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -250,7 +303,7 @@ async def undo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
         )
     else:
-        await update.message.reply_text("❓ Tidak ditemukan catatan mutasi milik Anda dalam 5 menit terakhir untuk dibatalkan.")
+        await update.message.reply_text("❓ Tidak ditemukan catatan mutasi milik Anda dalam 24 jam terakhir untuk dibatalkan.")
 
 
 async def delete_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -268,8 +321,9 @@ async def delete_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     chat_id = str(update.effective_chat.id)
     tx = db.get_transaction(tx_id)
-    if tx and (tx.user_id == user_id or str(tx.chat_id) == chat_id):
-        db.delete_transaction_web(tx_id, chat_id)
+    if tx and tx.user_id == user_id and str(tx.chat_id) == chat_id:
+        if not db.delete_transaction(tx_id, user_id, chat_id):
+            return await update.message.reply_text("❓ Transaksi sudah dihapus atau tidak ditemukan.")
         await update.message.reply_text(
             f"✅ *Catatan Mutasi Dihapus*\nTransaksi #{tx_id} ({tx.description} — {format_rupiah(tx.amount)}) berhasil dihapus dari sistem.",
             parse_mode="Markdown",
@@ -310,7 +364,7 @@ async def edit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db: Database = context.application.bot_data["db"]
     user_id = str(update.effective_user.id)
     chat_id = str(update.effective_chat.id)
-    ok = db.update_transaction(tx_id, user_id, chat_id, **changes) or db.update_transaction(tx_id, "web", chat_id, **changes)
+    ok = db.update_transaction(tx_id, user_id, chat_id, **changes)
     if ok:
         await update.message.reply_text(f"✅ *Catatan #{tx_id} Berhasil Diperbarui.*", parse_mode="Markdown")
     else:
@@ -364,6 +418,24 @@ async def wealth_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• Cash di tangan: *{format_rupiah(summary.cash)}*\n━━━━━━━━━━━━━━━━━━━━━━\n"
             "Saldo dihitung dari ledger akun; transfer internal tidak dihitung sebagai pemasukan.")
     await update.message.reply_text(text, parse_mode="Markdown")
+
+async def set_account_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Set a personal default account; it overrides the family default for this user."""
+    s = context.application.bot_data["settings"]
+    if not allowed(update, s):
+        return
+    if len(context.args) != 2 or context.args[0].casefold() not in {"masuk", "keluar", "income", "expense"}:
+        return await update.message.reply_text("Format: `/setakun masuk|keluar <ID akun>`\nContoh: `/setakun masuk 2` (khusus Anda)", parse_mode="Markdown")
+    kind = "income" if context.args[0].casefold() in {"masuk", "income"} else "expense"
+    try:
+        account_id = int(context.args[1])
+        account = context.application.bot_data["db"].get_account(account_id, str(update.effective_chat.id))
+        if not account:
+            raise ValueError
+        WealthLedger(context.application.bot_data["db"]).set_default_account(str(update.effective_chat.id), kind, account_id, str(update.effective_user.id))
+        await update.message.reply_text(f"✅ Default pribadi untuk transaksi {('masuk' if kind == 'income' else 'keluar')} diset ke *{account.name}*.", parse_mode="Markdown")
+    except (ValueError, WealthError):
+        await update.message.reply_text("❌ ID akun tidak ditemukan di grup ini. Lihat daftar dengan `/akun`.", parse_mode="Markdown")
 
 
 async def transfer_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -463,10 +535,13 @@ async def receipt_photo_handler(update: Update, context: ContextTypes.DEFAULT_TY
         data = await asyncio.to_thread(extract_receipt, bytes(image), current.gemini_api_keys, current.gemini_model, pool)
         context.user_data["pending_receipt"] = {
             **data,
+            "pending_at": datetime.now().isoformat(),
             "user_id": str(update.effective_user.id),
             "username": update.effective_user.username or update.effective_user.first_name or "user",
             "chat_id": str(update.effective_chat.id),
         }
+        detail_lines = [f"• {i['name']} x{i['quantity']:g} — {format_rupiah(i['subtotal'] or i['unit_price'])}" for i in data.get("items", [])]
+        detail_text = ("\n🧺 *Rincian Barang:*\n" + "\n".join(detail_lines)) if detail_lines else ""
         preview = (
             f"🧾 *HASIL ANALISA STRUK BELANJA*\n"
             f"━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -474,6 +549,11 @@ async def receipt_photo_handler(update: Update, context: ContextTypes.DEFAULT_TY
             f"📝 *Deskripsi     :* {data['description']}\n"
             f"🏷️ *Pos Kategori  :* {data['category']}\n"
             f"📅 *Tanggal Struk :* {data['date']}\n"
+            f"🕒 *Jam           :* {data.get('time') or '-'}\n"
+            f"📍 *Lokasi        :* {data.get('location') or '-'}\n"
+            f"🏦 *Bank          :* {data.get('bank') or data.get('source_bank') or data.get('destination_bank') or '-'}\n"
+            f"🔁 *Jenis         :* {data.get('transaction_kind') or '-'}\n"
+            f"{detail_text}\n"
             f"━━━━━━━━━━━━━━━━━━━━━━\n"
             f"Apakah Anda ingin menyimpan transaksi ini?"
         )
@@ -509,8 +589,9 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             transcribe_audio, bytes(audio), current.gemini_api_keys, current.gemini_model,
             context.application.bot_data["gemini_pool"],
         )
-        await status.edit_text(f"🎙️ Terbaca: _{transcript}_\n\nMencatat transaksi...", parse_mode="Markdown")
-        await message_handler(update, context, transcript)
+        context.user_data["pending_voice"] = {"transcript": transcript, "created_at": datetime.now().isoformat(), "user_id": str(update.effective_user.id), "chat_id": str(update.effective_chat.id)}
+        keys = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Konfirmasi & Simpan", callback_data="voice:save"), InlineKeyboardButton("❌ Batalkan", callback_data="voice:cancel")]])
+        await status.edit_text(f"🎙️ *Hasil transkrip:*\n{transcript}\n\nPeriksa dulu sebelum dicatat.", parse_mode="Markdown", reply_markup=keys)
     except Exception as exc:
         logging.getLogger(__name__).exception("Voice failed: %s", exc)
         await status.edit_text(f"⚠️ Gagal membaca voice: {str(exc)[:180]}")
@@ -535,6 +616,42 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply.text = f"✅ *Akun berhasil ditambahkan*\n{account.name}\nID akun: `{account.id}`"
             except (KeyError, ValueError, WealthError) as exc:
                 reply.text = f"❌ Akun tidak disimpan: {exc}"
+        elif reply.action == "default_account":
+            try:
+                values = reply.payload
+                kind = str(values["operation_kind"]).casefold()
+                kind = "income" if kind in {"income", "masuk"} else "expense" if kind in {"expense", "keluar"} else kind
+                account_id = int(values["account_id"])
+                account = db.get_account(account_id, chat_id)
+                if kind not in {"income", "expense"} or not account:
+                    raise WealthError("Jenis atau akun default tidak valid")
+                WealthLedger(db).set_default_account(chat_id, kind, account_id, user_id)
+                reply.text = f"✅ Default pribadi {kind} diset ke *{account.name}*."
+            except (KeyError, ValueError, WealthError) as exc:
+                reply.text = f"❌ Default akun tidak disimpan: {exc}"
+        elif reply.action == "operation_create":
+            try:
+                values = reply.payload
+                ledger = WealthLedger(db)
+                amount = parse_idr_amount(values["amount"])
+                tx_date = date.today()
+                operation = ledger.create_transfer(chat_id, int(values["source_account_id"]), int(values["destination_account_id"]), amount, values.get("description", "Transfer"), tx_date, user_id, update.effective_user.username or "user", operation_type=values.get("operation_type", "transfer"), idempotency_key=f"telegram-operation:{update.update_id}")
+                reply.text = f"✅ Mutasi berhasil disimpan. Ref: `{operation.id[:10]}`"
+            except (KeyError, ValueError, WealthError) as exc:
+                reply.text = f"❌ Mutasi tidak disimpan: {exc}"
+        elif reply.action == "archive":
+            try:
+                WealthLedger(db).archive_account(chat_id, int(reply.payload["account_id"]), user_id)
+                reply.text = "✅ Akun berhasil diarsipkan."
+            except (KeyError, ValueError, WealthError) as exc:
+                reply.text = f"❌ Akun tidak diarsipkan: {exc}"
+        elif reply.action == "reconcile":
+            try:
+                values = reply.payload
+                WealthLedger(db).reconcile_account(chat_id, int(values["account_id"]), parse_idr_amount(values["actual_balance"], allow_zero=True), values.get("reason", "Rekonsiliasi"), date.today(), user_id, update.effective_user.username or "user")
+                reply.text = "✅ Saldo akun berhasil direkonsiliasi."
+            except (KeyError, ValueError, WealthError) as exc:
+                reply.text = f"❌ Rekonsiliasi gagal: {exc}"
         elif reply.action == "summary":
             summary = WealthLedger(db).get_wealth_summary(chat_id)
             reply.text = f"📊 *RINGKASAN KEUANGAN*\n\n• Total kekayaan: *{format_rupiah(summary.total_wealth)}*\n• Aset likuid: *{format_rupiah(summary.liquid_assets)}*\n• Investasi: *{format_rupiah(summary.investments)}*\n• Cash: *{format_rupiah(summary.cash)}*"
@@ -545,14 +662,28 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pending = context.user_data.get("pending_receipt")
         if not pending:
             return await query.edit_message_text("❓ Pratinjau struk telah kedaluwarsa.")
+        try:
+            if datetime.now() - datetime.fromisoformat(pending.get("pending_at", datetime.now().isoformat())) > timedelta(hours=24):
+                context.user_data.pop("pending_receipt", None)
+                context.user_data.pop("receipt_editing", None)
+                return await query.edit_message_text("⌛ Pratinjau struk kedaluwarsa setelah 24 jam.")
+        except ValueError:
+            context.user_data.pop("pending_receipt", None)
+            return await query.edit_message_text("❓ Pratinjau struk tidak valid, silakan kirim ulang.")
         if data == "receipt:cancel":
             context.user_data.pop("pending_receipt", None)
             return await query.edit_message_text("❌ Pencatatan struk belanja dibatalkan.")
         if data == "receipt:edit":
+            context.user_data["receipt_editing"] = True
             return await query.edit_message_text("✏️ Silakan ketik koreksi transaksi, contoh: `45000 belanja perlengkapan rumah`", parse_mode="Markdown")
         if data == "receipt:save":
-            tx_type = "income" if pending.get("category") == "Pemasukan" else "expense"
-            saved = db.add_transaction(
+            if int(pending.get("amount") or 0) <= 0:
+                return await query.edit_message_text("❓ Nominal struk belum terbaca. Gunakan Koreksi dan masukkan nominal yang benar.")
+            if str(pending.get("chat_id")) != chat_id or str(pending.get("user_id")) != user_id:
+                context.user_data.pop("pending_receipt", None)
+                return await query.edit_message_text("❌ Pratinjau ini bukan milik Anda atau bukan dari grup ini.")
+            tx_type = "income" if pending.get("direction") == "in" or (pending.get("direction") is None and pending.get("category") == "Pemasukan") else "expense"
+            saved = db.add_transaction_with_details(
                 Transaction(
                     None,
                     pending["user_id"],
@@ -570,6 +701,22 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(render_confirmation(saved, pending["username"]), parse_mode="Markdown")
             return
 
+    if data.startswith("voice:"):
+        pending = context.user_data.get("pending_voice")
+        if not pending or pending.get("user_id") != user_id or pending.get("chat_id") != chat_id:
+            return await query.edit_message_text("❓ Konfirmasi voice sudah kedaluwarsa.")
+        if data == "voice:cancel":
+            context.user_data.pop("pending_voice", None)
+            return await query.edit_message_text("❌ Pencatatan voice dibatalkan.")
+        try:
+            if datetime.now() - datetime.fromisoformat(pending["created_at"]) > timedelta(hours=24):
+                context.user_data.pop("pending_voice", None)
+                return await query.edit_message_text("⌛ Konfirmasi voice kedaluwarsa setelah 24 jam.")
+            context.user_data.pop("pending_voice", None)
+            return await message_handler(update, context, pending["transcript"], reply_message=query.message)
+        except (ValueError, ParseError) as exc:
+            return await query.edit_message_text(f"❌ Voice tidak dapat dicatat: {exc}")
+
     # Undo specific transaction ID callback
     if data.startswith("cb:undo:"):
         target_id = data.split("cb:undo:")[-1]
@@ -578,18 +725,39 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if tx and db.delete_transaction(tx.id, user_id, chat_id):
                 await query.edit_message_text(f"🗑️ *Catatan mutasi terakhir (#{tx.id} — {tx.description}) berhasil dibatalkan.*", parse_mode="Markdown")
             else:
-                await query.edit_message_text("❓ Tidak ada mutasi milik Anda dalam 5 menit terakhir untuk dibatalkan.")
+                await query.edit_message_text("❓ Tidak ada mutasi milik Anda dalam 24 jam terakhir untuk dibatalkan.")
         else:
             try:
                 tx_id = int(target_id)
                 tx = db.get_transaction(tx_id)
-                if tx and db.delete_transaction_web(tx_id, chat_id):
+                if tx and tx.user_id == user_id and datetime.now() - tx.created_at <= timedelta(hours=24) and db.delete_transaction(tx_id, user_id, chat_id):
                     await query.edit_message_text(f"🗑️ *Catatan mutasi #{tx_id} ({tx.description} — {format_rupiah(tx.amount)}) berhasil dibatalkan.*", parse_mode="Markdown")
+                elif tx and datetime.now() - tx.created_at > timedelta(hours=24):
+                    await query.edit_message_text("⌛ Tombol undo sudah kedaluwarsa setelah 24 jam.", reply_markup=None)
                 else:
                     await query.edit_message_text("❓ Catatan transaksi telah dihapus sebelumnya.")
             except ValueError:
                 pass
         return
+
+    if data.startswith("cb:delete:") or data.startswith("cb:edit:"):
+        try:
+            tx_id = int(data.rsplit(":", 1)[1])
+            tx = db.get_transaction(tx_id)
+        except (ValueError, TypeError):
+            tx = None
+        if not tx or str(tx.chat_id) != chat_id or str(tx.user_id) != user_id:
+            return await query.edit_message_text("❌ Anda hanya dapat mengelola transaksi yang Anda buat sendiri.")
+        if data.startswith("cb:delete:"):
+            if datetime.now() - tx.created_at > timedelta(hours=24):
+                return await query.edit_message_text("⌛ Penghapusan dari tombol hanya tersedia selama 24 jam.")
+            db.delete_transaction(tx_id, user_id, chat_id)
+            return await query.edit_message_text(f"✅ Transaksi #{tx_id} dihapus. Saldo dan rekap akan diperbarui.")
+        return await query.message.reply_text(
+            f"✏️ Untuk mengubah transaksi #{tx_id}, kirim salah satu:\n"
+            f"`/edit {tx_id} nominal 50000`\n`/edit {tx_id} deskripsi Keterangan baru`\n`/edit {tx_id} kategori Nama Kategori`",
+            parse_mode="Markdown",
+        )
 
     # Reports callbacks
     if data == "cb:rekap:bulan":
@@ -636,6 +804,7 @@ def build_app():
             ("akun", "Daftar akun bank dan e-wallet"),
             ("saldoaset", "Total kekayaan dan saldo aset"),
             ("transfer", "Transfer antar akun"),
+            ("setakun", "Atur rekening pribadi"),
             ("undo", "Batalkan catatan terakhir"),
             ("bantuan", "Panduan penggunaan bot"),
         ])
@@ -655,6 +824,7 @@ def build_app():
     app.add_handler(CommandHandler(["akun", "rekening"], accounts_cmd))
     app.add_handler(CommandHandler(["saldoaset", "wealth", "kekayaan"], wealth_cmd))
     app.add_handler(CommandHandler("transfer", transfer_cmd))
+    app.add_handler(CommandHandler("setakun", set_account_cmd))
     app.add_handler(CommandHandler("backup", backup_cmd))
     app.add_handler(CommandHandler("tambahkategori", add_category_cmd))
     app.add_handler(CommandHandler("hapuskategori", remove_category_cmd))

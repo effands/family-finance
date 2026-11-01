@@ -70,17 +70,24 @@ class WealthLedger:
                 return
             conn.execute("UPDATE financial_accounts SET is_active=0, updated_at=? WHERE id=? AND chat_id=?", (datetime.now().isoformat(), account_id, chat_id))
 
-    def set_default_account(self, chat_id, operation_kind, account_id):
+    def set_default_account(self, chat_id, operation_kind, account_id, user_id=None):
         with self.db._conn() as conn:
             self._begin(conn)
             self._account(conn, chat_id, account_id)
             if operation_kind not in {"income", "expense", "transfer", "cash_withdrawal"}:
                 raise WealthError("Jenis default akun tidak valid")
-            conn.execute("INSERT OR REPLACE INTO account_preferences(chat_id, operation_kind, account_id) VALUES (?,?,?)", (chat_id, operation_kind, account_id))
+            if user_id:
+                conn.execute("INSERT OR REPLACE INTO user_account_preferences(chat_id,user_id,operation_kind,account_id) VALUES (?,?,?,?)", (chat_id, str(user_id), operation_kind, account_id))
+            else:
+                conn.execute("INSERT OR REPLACE INTO account_preferences(chat_id, operation_kind, account_id) VALUES (?,?,?)", (chat_id, operation_kind, account_id))
 
-    def get_default_account(self, chat_id, operation_kind):
+    def get_default_account(self, chat_id, operation_kind, user_id=None):
         with self.db._conn() as conn:
-            row = conn.execute("SELECT account_id FROM account_preferences WHERE chat_id=? AND operation_kind=?", (chat_id, operation_kind)).fetchone()
+            row = None
+            if user_id:
+                row = conn.execute("SELECT account_id FROM user_account_preferences WHERE chat_id=? AND user_id=? AND operation_kind=?", (chat_id, str(user_id), operation_kind)).fetchone()
+            if not row:
+                row = conn.execute("SELECT account_id FROM account_preferences WHERE chat_id=? AND operation_kind=?", (chat_id, operation_kind)).fetchone()
             return self.db.get_account(row["account_id"], chat_id) if row else None
 
     def reconcile_account(self, chat_id, account_id, actual_balance, reason, effective_date, actor_user_id, actor_username):
