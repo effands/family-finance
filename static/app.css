@@ -1746,6 +1746,12 @@ body:has(.settings-center-page) { background-image: radial-gradient(circle at 7%
 .dashboard-center-page .btn-primary, .wealth-center-page .btn-primary, .backup-center-page .btn-primary, .settings-center-page .btn-primary { background: linear-gradient(135deg, var(--nebula-accent), #7aa7f8); border-color: transparent; box-shadow: 0 8px 18px var(--nebula-glow); }
 .dashboard-center-page .btn-primary:hover, .wealth-center-page .btn-primary:hover, .backup-center-page .btn-primary:hover, .settings-center-page .btn-primary:hover { filter: saturate(1.08) brightness(.96); }
 .dashboard-center-page .brand-mark, .wealth-center-page .brand-mark, .backup-center-page .brand-mark, .settings-center-page .brand-mark { background: linear-gradient(135deg, var(--nebula-accent), #77b7f7); box-shadow: 0 8px 18px var(--nebula-glow); }
+.dashboard-center-page .metric-card { border-top-width: 4px !important; }
+.dashboard-center-page .metric-card:nth-child(1) { background: linear-gradient(145deg, rgba(236,253,245,.94), rgba(255,255,255,.72)); border-top-color: #34b88a !important; }
+.dashboard-center-page .metric-card:nth-child(2) { background: linear-gradient(145deg, rgba(255,241,244,.96), rgba(255,255,255,.72)); border-top-color: #fb7185 !important; }
+.dashboard-center-page .metric-card:nth-child(3) { background: linear-gradient(145deg, rgba(239,243,255,.96), rgba(255,255,255,.72)); border-top-color: #818cf8 !important; }
+.dashboard-center-page .metric-card:nth-child(4) { background: linear-gradient(145deg, rgba(255,248,230,.96), rgba(255,255,255,.72)); border-top-color: #f5b942 !important; }
+.dashboard-center-page .metric-card .metric-value { text-shadow: 0 2px 12px rgba(71,85,105,.08); }
 .wealth-center-page .metric-card,
 .wealth-center-page .panel,
 .wealth-center-page .settings-section-card {
