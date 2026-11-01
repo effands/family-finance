@@ -33,3 +33,7 @@ def test_account_fields_are_extracted_from_one_sentence():
 def test_missing_account_identifier_is_not_invented_from_sentence_text():
     fields = extract_account_fields("aku mau input bank baru BCA atas nama EFENDI saldo 17.516.328")
     assert "account_identifier" not in fields
+
+
+def test_crypto_is_saved_as_investment_portfolio_type():
+    assert extract_account_fields("tambah crypto Bitcoin saldo 2 juta")["account_type"] == "investment"

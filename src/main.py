@@ -628,7 +628,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 values = reply.payload
                 account = FinancialAccount(None, chat_id, values["name"], values["account_type"], values["provider"], values["holder_name"], values["account_identifier"], "IDR", int(values["opening_balance"].replace(".", "").replace(",", "")), date.today())
-                db.create_account(account, idempotency_key=f"telegram-account:{update.update_id}")
+                account = db.create_account(account, idempotency_key=f"telegram-account:{update.update_id}")
                 reply.text = f"✅ *Akun berhasil ditambahkan*\n{account.name}\nID akun: `{account.id}`"
             except (KeyError, ValueError, WealthError) as exc:
                 reply.text = f"❌ Akun tidak disimpan: {exc}"

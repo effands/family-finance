@@ -30,7 +30,7 @@ def extract_account_fields(text: str) -> dict:
     if any(word in value for word in ("ewallet", "e-wallet", "gopay", "dana", "shopeepay", "ovo")):
         fields["account_type"] = "ewallet"
     elif any(word in value for word in ("crypto", "bitcoin", "ethereum")):
-        fields["account_type"] = "crypto"
+        fields["account_type"] = "investment"
     elif "sbn" in value:
         fields["account_type"] = "investment"
     elif any(word in value for word in ("saham", "reksa dana", "emas", "investasi")):
