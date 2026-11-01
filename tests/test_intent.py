@@ -1,4 +1,4 @@
-from src.intent import account_request_summary, classify_finance_intent
+from src.intent import account_request_summary, classify_finance_intent, extract_account_fields
 
 
 def test_account_request_is_not_classified_as_expense():
@@ -14,3 +14,11 @@ def test_regular_transaction_stays_transaction():
 def test_transfer_and_atm_have_their_own_intent():
     assert classify_finance_intent("tarik saldo dari ATM Mandiri") == "cash_withdrawal"
     assert classify_finance_intent("transfer dari BCA ke GoPay") == "transfer"
+
+
+def test_account_fields_are_extracted_from_one_sentence():
+    fields = extract_account_fields("aku mau input bank baru BCA atas nama EFENDI saldo 17.516.328 norek 1234")
+    assert fields["provider"] == "BCA"
+    assert fields["holder_name"] == "EFENDI"
+    assert fields["opening_balance"] == "17516328"
+    assert fields["account_identifier"] == "1234"

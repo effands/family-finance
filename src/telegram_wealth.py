@@ -53,6 +53,16 @@ class WealthTelegramMenu:
             [("📋 Riwayat & Laporan", "wealth:reports"), ("⚙️ Pengaturan", "wealth:settings")],
         ]))
 
+    def begin_account_request(self, chat_id, user_id, values=None):
+        session = self._session(chat_id, user_id)
+        session.flow, session.values = "wealth:account:add", dict(values or {})
+        fields = ("name", "account_type", "provider", "holder_name", "account_identifier", "opening_balance")
+        session.step = next((index for index, field in enumerate(fields) if not session.values.get(field)), len(fields))
+        if session.step >= len(fields):
+            return TelegramReply("🔎 Data akun sudah lengkap. Periksa lalu konfirmasi.", self._keyboard([[('✅ Konfirmasi', 'wealth:confirm'), ('❌ Batalkan', 'wealth:cancel')]]), action="confirm", payload=dict(session.values))
+        prompts = ["Ketik nama akun/panggilan", "Ketik jenis akun: bank, ewallet, cash, atau investment", "Ketik nama bank/provider", "Ketik nama pemilik akun", "Ketik nomor rekening/ID (boleh 4 digit terakhir)", "Ketik saldo awal dalam rupiah"]
+        return TelegramReply("📝 Saya sudah membaca sebagian data.\\n\\n" + prompts[session.step], self._keyboard([[('❌ Batalkan', 'wealth:cancel'), ('🏠 Menu Utama', 'wealth:home')]]), action="input", payload=session.values)
+
     def handle_callback(self, chat_id, user_id, callback_data, update_id=""):
         session = self._session(chat_id, user_id)
         if callback_data == "wealth:confirm" and session.flow in {"wealth:account:add", "wealth:investment:add"} and session.step >= (6 if session.flow == "wealth:account:add" else 5):

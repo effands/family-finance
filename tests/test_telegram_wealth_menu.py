@@ -132,3 +132,12 @@ def test_guided_transfer_input_asks_for_next_field():
     reply = menu.handle_text("chat-1", "user-1", "1")
     assert "nominal transfer" in reply.text.casefold()
     assert "implementasi alur lengkap" not in reply.text.casefold()
+
+
+def test_account_request_skips_fields_already_read_from_sentence():
+    menu = WealthTelegramMenu()
+    reply = menu.begin_account_request("chat-1", "user-1", {
+        "name": "BCA", "account_type": "bank", "provider": "BCA",
+        "holder_name": "EFENDI", "opening_balance": "17516328",
+    })
+    assert "nomor rekening" in reply.text.casefold()
