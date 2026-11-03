@@ -250,7 +250,7 @@ def _html_page(title, body, status="200 OK", headers=None):
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/keuangan/static/app.css?v=filters-inline-2">
+  <link rel="stylesheet" href="/keuangan/static/app.css?v=table-sortable">
 </head>
 <body>
   {body}
@@ -527,7 +527,7 @@ def _rows_html(rows, active_chat_id=""):
         edit_id_arg = json.dumps(str(x.id))
         edit_action = f"<button class='btn btn-ghost btn-sm' type='button' title='Edit transaksi' aria-label='Edit transaksi' onclick=\"openEditModal({edit_id_arg}, '{x.type}', {x.amount}, {json.dumps(x.description)}, {json.dumps(x.category)}, '{x.transaction_date.isoformat()}', {json.dumps(_display_user_name(raw_user_name))})\">{_svg_icon('edit')}</button>"
         delete_action = "" if not isinstance(x.id, int) else f"<button class='btn btn-ghost btn-sm' type='button' title='Hapus transaksi ini' onclick=\"confirmDelete({x.id}, '{desc_js}', '{format_rupiah(x.amount)}')\">{_svg_icon('trash')}</button>"
-        output.append(f"""<tr class="tx-row" data-id="{x.id}" data-category="{cat_escaped}" data-type="{x.type}" data-user="{user_name}" data-amount="{x.amount}">
+        output.append(f"""<tr class="tx-row" data-id="{x.id}" data-date="{x.transaction_date.isoformat()}" data-category="{cat_escaped}" data-type="{x.type}" data-user="{user_name}" data-description="{desc_escaped}" data-amount="{x.amount}">
           <td class="tabular-nums" style="color: var(--ink-muted); font-size: 12px; font-weight: 600;" title="ID internal: {html.escape(str(x.id))}">#{display_id}</td>
           <td class="tabular-nums" style="white-space: nowrap; font-weight: 500;">{format_date_id(x.transaction_date)}</td>
           <td>{type_badge}</td>
@@ -2697,7 +2697,7 @@ def _dashboard_response(environ, start_response):
     {f'<input type="hidden" name="end" value="{filters.end.isoformat()}">' if filters.end and period == "custom" else ''}
     
     <div class="form-group">
-      <label for="f-type">Jenis Transaksi</label>
+      <label for="f-type">Jenis</label>
       <select class="form-control" id="f-type" name="type">
         <option value="">Semua Jenis</option>
         <option value="income" {'selected' if filters.transaction_type == 'income' else ''}>Pemasukan (Masuk)</option>
@@ -2714,25 +2714,7 @@ def _dashboard_response(environ, start_response):
     </div>
 
     <div class="form-group">
-      <label for="f-sort">Urutkan Berdasarkan</label>
-      <select class="form-control" id="f-sort" name="sort">
-        <option value="transaction_date" {'selected' if filters.sort_by == 'transaction_date' else ''}>Tanggal Transaksi</option>
-        <option value="amount" {'selected' if filters.sort_by == 'amount' else ''}>Nominal (IDR)</option>
-        <option value="description" {'selected' if filters.sort_by == 'description' else ''}>Deskripsi</option>
-        <option value="category" {'selected' if filters.sort_by == 'category' else ''}>Kategori</option>
-      </select>
-    </div>
-
-    <div class="form-group">
-      <label for="f-dir">Tata Urutan</label>
-      <select class="form-control" id="f-dir" name="dir">
-        <option value="desc" {'selected' if filters.sort_dir == 'desc' else ''}>Terbaru / Terbesar</option>
-        <option value="asc" {'selected' if filters.sort_dir == 'asc' else ''}>Terlama / Terkecil</option>
-      </select>
-    </div>
-
-    <div class="form-group">
-      <label for="f-q">Pencarian Kata Kunci</label>
+      <label for="f-q">Cari</label>
       <input class="form-control" id="f-q" name="q" value="{html.escape(filters.search or '')}" placeholder="Cari deskripsi, kategori, nama..." onkeyup="filterTableLive()">
     </div>
 
@@ -2910,13 +2892,13 @@ def _dashboard_response(environ, start_response):
       <table class="data-table" id="transactionTable">
         <thead>
           <tr>
-            <th style="width: 70px;">ID</th>
-            <th style="width: 120px;">Tanggal</th>
-            <th style="width: 130px;">Jenis</th>
-            <th style="width: 150px;">Kategori</th>
-            <th>Deskripsi Transaksi</th>
-            <th style="width: 160px;">Nominal (IDR)</th>
-            <th style="width: 150px;">Pencatat</th>
+            <th class="sortable" data-sort-key="id" onclick="sortTableBy('id')" style="width: 70px;">ID <span class="sort-indicator"></span></th>
+            <th class="sortable" data-sort-key="date" onclick="sortTableBy('date')" style="width: 120px;">Tanggal <span class="sort-indicator"></span></th>
+            <th class="sortable" data-sort-key="type" onclick="sortTableBy('type')" style="width: 130px;">Jenis <span class="sort-indicator"></span></th>
+            <th class="sortable" data-sort-key="category" onclick="sortTableBy('category')" style="width: 150px;">Kategori <span class="sort-indicator"></span></th>
+            <th class="sortable" data-sort-key="description" onclick="sortTableBy('description')">Deskripsi <span class="sort-indicator"></span></th>
+            <th class="sortable" data-sort-key="amount" onclick="sortTableBy('amount')" style="width: 160px;">Nominal <span class="sort-indicator"></span></th>
+            <th class="sortable" data-sort-key="user" onclick="sortTableBy('user')" style="width: 150px;">Pencatat <span class="sort-indicator"></span></th>
             <th style="width: 60px; text-align: center;">Aksi</th>
           </tr>
         </thead>
@@ -3315,6 +3297,34 @@ function setQuickCategory(catName) {{
     catSelect.value = catName;
     filterTableLive();
   }}
+}}
+
+function sortTableBy(key) {{
+  const table = document.getElementById('transactionTable');
+  const tbody = table ? table.querySelector('tbody') : null;
+  if (!tbody) return;
+  const currentKey = table.getAttribute('data-sort-key');
+  const direction = currentKey === key && table.getAttribute('data-sort-dir') === 'asc' ? 'desc' : 'asc';
+  const rows = Array.from(tbody.querySelectorAll('tr.tx-row'));
+  const value = (row) => {{
+    if (key === 'amount') return Number(row.dataset.amount || 0);
+    return (row.dataset[key] || '').toLowerCase();
+  }};
+  rows.sort((a, b) => {{
+    const av = value(a), bv = value(b);
+    if (av < bv) return direction === 'asc' ? -1 : 1;
+    if (av > bv) return direction === 'asc' ? 1 : -1;
+    return 0;
+  }});
+  rows.forEach(row => tbody.appendChild(row));
+  table.setAttribute('data-sort-key', key);
+  table.setAttribute('data-sort-dir', direction);
+  document.querySelectorAll('#transactionTable th.sortable').forEach(th => {{
+    const indicator = th.querySelector('.sort-indicator');
+    const active = th.getAttribute('data-sort-key') === key;
+    if (indicator) indicator.textContent = active ? (direction === 'asc' ? ' ↑' : ' ↓') : '';
+    th.classList.toggle('is-sorted', active);
+  }});
 }}
 
 function resetTableFilters() {{

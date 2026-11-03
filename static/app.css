@@ -760,7 +760,7 @@ a.brand-lockup:hover .brand-title {
 
 .filters-form {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.05fr) minmax(0, .9fr) minmax(0, .9fr) minmax(0, 1.45fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.1fr) minmax(0, 1.55fr) minmax(0, 1fr) auto;
   gap: 10px;
   align-items: end;
 }
@@ -769,6 +769,24 @@ a.brand-lockup:hover .brand-title {
   display: flex;
   flex-direction: column;
   gap: 5px;
+}
+
+.data-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: color .15s ease, background-color .15s ease;
+}
+
+.data-table th.sortable:hover,
+.data-table th.sortable.is-sorted {
+  color: var(--brand-primary);
+  background: rgba(37, 99, 235, .06);
+}
+
+.sort-indicator {
+  color: var(--brand-primary);
+  font-weight: 800;
 }
 
 .form-group label {
