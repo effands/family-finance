@@ -130,6 +130,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = f"@{user.username}" if user.username else (user.first_name or "Keluarga")
     reply = context.application.bot_data["wealth_menu"].main_menu(str(update.effective_chat.id), str(user.id), f"👋 *Halo, {name}!*")
     await update.message.reply_text(reply.text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(reply.keyboard["inline_keyboard"]))
+    await update.message.reply_text("⚡ Menu cepat — pilih tombol di bawah:", reply_markup=MENU_KEYBOARD)
 
 
 async def menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
