@@ -2199,7 +2199,14 @@ def _dashboard_response(environ, start_response):
                 raw_op_id = str(tx_id).removeprefix("WL-").removeprefix("wl-")
                 with db._conn() as conn:
                     cur = conn.execute("UPDATE ledger_operations SET description=?, category=?, transaction_date=? WHERE (id=? OR id LIKE ?) AND chat_id=?", (desc_val, cat_val, tx_date.isoformat(), raw_op_id, f"{raw_op_id}%", chat_id))
-                    conn.execute("UPDATE ledger_entries SET description=?, category=?, transaction_date=? WHERE operation_id IN (SELECT id FROM ledger_operations WHERE id=? OR id LIKE ?) AND chat_id=?", (desc_val, cat_val, tx_date.isoformat(), raw_op_id, f"{raw_op_id}%", chat_id))
+                    operation_ids = [row[0] for row in conn.execute("SELECT id FROM ledger_operations WHERE (id=? OR id LIKE ?) AND chat_id=?", (raw_op_id, f"{raw_op_id}%", chat_id)).fetchall()]
+                    if amount <= 0 or not operation_ids:
+                        raise ValueError("Data transaksi tidak valid")
+                    placeholders = ",".join("?" for _ in operation_ids)
+                    conn.execute(
+                        f"UPDATE ledger_entries SET amount=?, description=?, category=?, transaction_date=? WHERE operation_id IN ({placeholders}) AND chat_id=?",
+                        [amount, desc_val, cat_val, tx_date.isoformat(), *operation_ids, chat_id],
+                    )
                     ok = cur.rowcount > 0
             toast = "updated" if ok else "update_error"
         except (ValueError, TypeError):
