@@ -2890,11 +2890,7 @@ def _dashboard_response(environ, start_response):
 
   <!-- Transaction Data Ledger Panel (Moved directly below summary metrics for quick access) -->
   <section class="panel ledger-panel">
-    <div class="panel-header">
-      <div class="panel-title-group">
-        <h3>Buku Besar Mutasi Transaksi</h3>
-        <div class="panel-subtitle">Menampilkan {len(rows)} mutasi catatan transaksi terverifikasi</div>
-      </div>
+    <div class="panel-header ledger-panel-header">
       <div class="ledger-toolbar">
         <div class="ledger-filter-group">
           <select class="form-control form-control-sm" id="tableCategoryFilter" onchange="filterTableLive()" title="Filter Kategori">
