@@ -2890,21 +2890,21 @@ def _dashboard_response(environ, start_response):
       </div>
       <div class="ledger-toolbar">
         <div class="ledger-filter-group">
-          <select class="form-control form-control-sm" id="tableCategoryFilter" onchange="filterTableLive()" title="Filter Kategori" style="min-width: 150px; height: 38px;">
+          <select class="form-control form-control-sm" id="tableCategoryFilter" onchange="filterTableLive()" title="Filter Kategori">
             <option value="">🏷️ Semua Kategori</option>
             {category_filter_options}
           </select>
-          <select class="form-control form-control-sm" id="tableTypeFilter" onchange="filterTableLive()" title="Filter Jenis" style="min-width: 130px; height: 38px;">
+          <select class="form-control form-control-sm" id="tableTypeFilter" onchange="filterTableLive()" title="Filter Jenis">
             <option value="">💳 Semua Jenis</option>
             <option value="expense">🔴 Pengeluaran</option>
             <option value="income">🟢 Pemasukan</option>
           </select>
-          <select class="form-control form-control-sm" id="tableUserFilter" onchange="filterTableLive()" title="Filter Pencatat" style="min-width: 130px; height: 38px;">
+          <select class="form-control form-control-sm" id="tableUserFilter" onchange="filterTableLive()" title="Filter Pencatat">
             <option value="">👥 Semua Pencatat</option>
             {user_filter_options}
           </select>
         </div>
-        <div class="ledger-search-box" style="min-width: 200px;">
+        <div class="ledger-search-box">
           <span class="search-icon">{_svg_icon("search")}</span>
           <input class="form-control" type="text" id="tableQuickSearch" placeholder="Pencarian cepat di tabel..." onkeyup="filterTableLive()">
         </div>
@@ -2918,7 +2918,7 @@ def _dashboard_response(environ, start_response):
     </div>
 
     <div class="quick-category-pills" id="quickCategoryPills">
-      <button type="button" class="category-pill active" onclick="setQuickCategory('')" data-category="">Semua ({len(rows)})</button>
+      <button type="button" class="category-pill active" onclick="setQuickCategory('')" data-category="">Semua <span class="pill-badge">{len(rows)}</span></button>
       {category_pills_html}
     </div>
 

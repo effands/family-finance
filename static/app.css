@@ -807,20 +807,28 @@ a.brand-lockup:hover .brand-title {
   margin-bottom: 32px;
 }
 
+.ledger-panel .panel-header {
+  display: block;
+}
+
+.ledger-panel .panel-title-group {
+  margin-bottom: 18px;
+}
+
 .ledger-toolbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px) auto auto;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
-  flex-wrap: wrap;
 }
 
 .ledger-filter-group {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .ledger-filter-group select {
@@ -900,6 +908,7 @@ a.brand-lockup:hover .brand-title {
 .ledger-search-box {
   position: relative;
   width: 320px;
+  min-width: 0;
 }
 
 .ledger-search-box .search-icon {
@@ -915,6 +924,28 @@ a.brand-lockup:hover .brand-title {
 
 .ledger-search-box input {
   padding-left: 34px;
+}
+
+@media (max-width: 1150px) {
+  .ledger-toolbar {
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  }
+
+  .ledger-toolbar .btn,
+  .ledger-toolbar a {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 760px) {
+  .ledger-toolbar,
+  .ledger-filter-group {
+    grid-template-columns: 1fr;
+  }
+
+  .ledger-search-box {
+    width: 100%;
+  }
 }
 
 .table-responsive {
