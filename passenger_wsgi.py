@@ -2574,7 +2574,7 @@ def _dashboard_response(environ, start_response):
     for r in rows:
         row_cat_counts[r.category] = row_cat_counts.get(r.category, 0) + 1
     category_pills_html = "".join(
-        f"<button type='button' class='category-pill' onclick=\"setQuickCategory('{html.escape(cat_name)}')\" data-category='{html.escape(cat_name)}'>{html.escape(cat_name)} <span class='pill-badge'>{count}</span></button>"
+        f"<button type='button' class='category-pill' style='display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;border:1px solid #dbe4f0;background:#f8fafc;color:#475569;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;' onclick=\"setQuickCategory('{html.escape(cat_name)}')\" data-category='{html.escape(cat_name)}'>{html.escape(cat_name)} <span class='pill-badge' style='display:inline-block;padding:1px 6px;border-radius:999px;background:#e2e8f0;color:#475569;font-size:11px;font-weight:700;'>{count}</span></button>"
         for cat_name, count in sorted(row_cat_counts.items(), key=lambda z: -z[1])
     )
 
@@ -2917,8 +2917,8 @@ def _dashboard_response(environ, start_response):
       </div>
     </div>
 
-    <div class="quick-category-pills" id="quickCategoryPills">
-      <button type="button" class="category-pill active" onclick="setQuickCategory('')" data-category="">Semua <span class="pill-badge">{len(rows)}</span></button>
+    <div class="quick-category-pills" id="quickCategoryPills" style="display:flex;align-items:center;gap:8px;overflow-x:auto;padding:4px 0 14px;margin-bottom:8px;">
+      <button type="button" class="category-pill active" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;" onclick="setQuickCategory('')" data-category="">Semua <span class="pill-badge" style="display:inline-block;padding:1px 6px;border-radius:999px;background:rgba(255,255,255,.25);color:#fff;font-size:11px;font-weight:700;">{len(rows)}</span></button>
       {category_pills_html}
     </div>
 
