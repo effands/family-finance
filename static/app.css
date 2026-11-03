@@ -760,7 +760,7 @@ a.brand-lockup:hover .brand-title {
 
 .filters-form {
   display: grid;
-  grid-template-columns: 1.05fr 1.05fr .9fr .9fr 1.45fr 1fr auto;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.05fr) minmax(0, .9fr) minmax(0, .9fr) minmax(0, 1.45fr) minmax(0, 1fr) auto;
   gap: 10px;
   align-items: end;
 }
