@@ -524,9 +524,10 @@ def _rows_html(rows, active_chat_id=""):
         detail_payload = {"id": display_id, "date": x.transaction_date.isoformat(), "type": "Pemasukan" if is_inc else "Pengeluaran", "category": x.category, "description": x.description.split(" | Sumber:", 1)[0].split(" | Tujuan:", 1)[0], "amount": format_rupiah(x.amount), "user": _display_user_name(raw_user_name), "source": source_account, "destination": destination, "destination_provider": destination_provider, "destination_identifier": destination_identifier}
         detail_json = html.escape(json.dumps(detail_payload, ensure_ascii=False), quote=True)
         detail_action = f"<button class='btn btn-ghost btn-sm' type='button' title='Lihat detail transaksi' aria-label='Lihat detail transaksi' onclick='openDetailModal({detail_json})'>{_svg_icon('eye')}</button>"
-        edit_action = "" if not isinstance(x.id, int) else f"<button class='btn btn-ghost btn-sm' type='button' title='Edit transaksi' aria-label='Edit transaksi' onclick=\"openEditModal({x.id}, '{x.type}', {x.amount}, {json.dumps(x.description)}, {json.dumps(x.category)}, '{x.transaction_date.isoformat()}', {json.dumps(_display_user_name(raw_user_name))})\">{_svg_icon('edit')}</button>"
+        edit_id_arg = json.dumps(str(x.id))
+        edit_action = f"<button class='btn btn-ghost btn-sm' type='button' title='Edit transaksi' aria-label='Edit transaksi' onclick=\"openEditModal({edit_id_arg}, '{x.type}', {x.amount}, {json.dumps(x.description)}, {json.dumps(x.category)}, '{x.transaction_date.isoformat()}', {json.dumps(_display_user_name(raw_user_name))})\">{_svg_icon('edit')}</button>"
         delete_action = "" if not isinstance(x.id, int) else f"<button class='btn btn-ghost btn-sm' type='button' title='Hapus transaksi ini' onclick=\"confirmDelete({x.id}, '{desc_js}', '{format_rupiah(x.amount)}')\">{_svg_icon('trash')}</button>"
-        output.append(f"""<tr class="tx-row" data-id="{x.id}">
+        output.append(f"""<tr class="tx-row" data-id="{x.id}" data-category="{cat_escaped}" data-type="{x.type}" data-user="{user_name}" data-amount="{x.amount}">
           <td class="tabular-nums" style="color: var(--ink-muted); font-size: 12px; font-weight: 600;" title="ID internal: {html.escape(str(x.id))}">#{display_id}</td>
           <td class="tabular-nums" style="white-space: nowrap; font-weight: 500;">{format_date_id(x.transaction_date)}</td>
           <td>{type_badge}</td>
@@ -2187,9 +2188,19 @@ def _dashboard_response(environ, start_response):
             amount = int(form.get("amount", ["0"])[0].replace(".", "").replace(",", "").strip())
             tx_date = date.fromisoformat(form.get("transaction_date", [date.today().isoformat()])[0])
             tx_type = form.get("type", ["expense"])[0] if form.get("type", ["expense"])[0] in ("income", "expense") else "expense"
-            if not tx_id.isdigit() or amount <= 0:
-                raise ValueError("Data transaksi tidak valid")
-            ok = db.update_transaction_web(int(tx_id), chat_id, amount=amount, description=form.get("description", ["Transaksi"])[0].strip(), category=form.get("category", ["Lain-lain"])[0].strip(), transaction_date=tx_date, type=tx_type, username=form.get("username", ["Admin"])[0].strip())
+            desc_val = form.get("description", ["Transaksi"])[0].strip()
+            cat_val = form.get("category", ["Lain-lain"])[0].strip()
+            user_val = form.get("username", ["Admin"])[0].strip()
+            if tx_id.isdigit():
+                if amount <= 0:
+                    raise ValueError("Data transaksi tidak valid")
+                ok = db.update_transaction_web(int(tx_id), chat_id, amount=amount, description=desc_val, category=cat_val, transaction_date=tx_date, type=tx_type, username=user_val)
+            else:
+                raw_op_id = str(tx_id).removeprefix("WL-").removeprefix("wl-")
+                with db._conn() as conn:
+                    cur = conn.execute("UPDATE ledger_operations SET description=?, category=?, transaction_date=? WHERE (id=? OR id LIKE ?) AND chat_id=?", (desc_val, cat_val, tx_date.isoformat(), raw_op_id, f"{raw_op_id}%", chat_id))
+                    conn.execute("UPDATE ledger_entries SET description=?, category=?, transaction_date=? WHERE operation_id IN (SELECT id FROM ledger_operations WHERE id=? OR id LIKE ?) AND chat_id=?", (desc_val, cat_val, tx_date.isoformat(), raw_op_id, f"{raw_op_id}%", chat_id))
+                    ok = cur.rowcount > 0
             toast = "updated" if ok else "update_error"
         except (ValueError, TypeError):
             toast = "update_error"
@@ -2539,6 +2550,22 @@ def _dashboard_response(environ, start_response):
         f"<option value='{html.escape(c.name)}' {'selected' if filters.category == c.name else ''}>{c.emoji} {html.escape(c.name)}</option>"
         for c in all_categories
     )
+    category_filter_options = "".join(
+        f"<option value='{html.escape(c.name)}'>{c.emoji} {html.escape(c.name)}</option>"
+        for c in sorted(all_categories, key=lambda c: c.name)
+    )
+    row_users = sorted(list({_display_user_name(x.username or x.user_id or "User") for x in rows}))
+    user_filter_options = "".join(
+        f"<option value='{html.escape(u)}'>{html.escape(u)}</option>"
+        for u in row_users
+    )
+    row_cat_counts = {}
+    for r in rows:
+        row_cat_counts[r.category] = row_cat_counts.get(r.category, 0) + 1
+    category_pills_html = "".join(
+        f"<button type='button' class='category-pill' onclick=\"setQuickCategory('{html.escape(cat_name)}')\" data-category='{html.escape(cat_name)}'>{html.escape(cat_name)} <span class='pill-badge'>{count}</span></button>"
+        for cat_name, count in sorted(row_cat_counts.items(), key=lambda z: -z[1])
+    )
 
     # Build Period Tab Links
     period_defs = [
@@ -2851,14 +2878,37 @@ def _dashboard_response(environ, start_response):
         <div class="panel-subtitle">Menampilkan {len(rows)} mutasi catatan transaksi terverifikasi</div>
       </div>
       <div class="ledger-toolbar">
-        <div class="ledger-search-box">
+        <div class="ledger-filter-group">
+          <select class="form-control form-control-sm" id="tableCategoryFilter" onchange="filterTableLive()" title="Filter Kategori" style="min-width: 150px; height: 38px;">
+            <option value="">🏷️ Semua Kategori</option>
+            {category_filter_options}
+          </select>
+          <select class="form-control form-control-sm" id="tableTypeFilter" onchange="filterTableLive()" title="Filter Jenis" style="min-width: 130px; height: 38px;">
+            <option value="">💳 Semua Jenis</option>
+            <option value="expense">🔴 Pengeluaran</option>
+            <option value="income">🟢 Pemasukan</option>
+          </select>
+          <select class="form-control form-control-sm" id="tableUserFilter" onchange="filterTableLive()" title="Filter Pencatat" style="min-width: 130px; height: 38px;">
+            <option value="">👥 Semua Pencatat</option>
+            {user_filter_options}
+          </select>
+        </div>
+        <div class="ledger-search-box" style="min-width: 200px;">
           <span class="search-icon">{_svg_icon("search")}</span>
           <input class="form-control" type="text" id="tableQuickSearch" placeholder="Pencarian cepat di tabel..." onkeyup="filterTableLive()">
         </div>
-        <a class="btn btn-secondary btn-sm" href="/keuangan/excel?{export_q}">
+        <button class="btn btn-ghost btn-sm" id="tableResetBtn" type="button" onclick="resetTableFilters()" title="Reset Filter" style="display: none; height: 38px;">
+          ✕ Reset
+        </button>
+        <a class="btn btn-secondary btn-sm" href="/keuangan/excel?{export_q}" style="height: 38px;">
           {_svg_icon("table")} Tampilan Penuh
         </a>
       </div>
+    </div>
+
+    <div class="quick-category-pills" id="quickCategoryPills">
+      <button type="button" class="category-pill active" onclick="setQuickCategory('')" data-category="">Semua ({len(rows)})</button>
+      {category_pills_html}
     </div>
 
     <div class="table-responsive">
@@ -3185,14 +3235,103 @@ function updateFileLabel(input) {{
 }}
 
 function filterTableLive() {{
-  const input = document.getElementById('tableQuickSearch');
-  const filter = input.value.toLowerCase();
+  const searchInput = document.getElementById('tableQuickSearch');
+  const catSelect = document.getElementById('tableCategoryFilter');
+  const typeSelect = document.getElementById('tableTypeFilter');
+  const userSelect = document.getElementById('tableUserFilter');
+  const resetBtn = document.getElementById('tableResetBtn');
+  const countSummary = document.getElementById('tableCountSummary');
+
+  const searchVal = (searchInput ? searchInput.value : '').toLowerCase().trim();
+  const catVal = (catSelect ? catSelect.value : '').toLowerCase().trim();
+  const typeVal = (typeSelect ? typeSelect.value : '').toLowerCase().trim();
+  const userVal = (userSelect ? userSelect.value : '').toLowerCase().trim();
+
+  const isFiltering = Boolean(searchVal || catVal || typeVal || userVal);
+  if (resetBtn) resetBtn.style.display = isFiltering ? 'inline-flex' : 'none';
+
+  const pills = document.querySelectorAll('#quickCategoryPills .category-pill');
+  pills.forEach(p => {{
+    const pCat = (p.getAttribute('data-category') || '').toLowerCase().trim();
+    if (pCat === catVal) p.classList.add('active');
+    else p.classList.remove('active');
+  }});
+
   const table = document.getElementById('transactionTable');
+  if (!table) return;
   const tr = table.getElementsByClassName('tx-row');
+  let visibleCount = 0;
+  let totalVisibleAmount = 0;
+
   for (let i = 0; i < tr.length; i++) {{
-    const text = tr[i].textContent || tr[i].innerText;
-    tr[i].style.display = text.toLowerCase().indexOf(filter) > -1 ? '' : 'none';
+    const row = tr[i];
+    const rowText = (row.textContent || row.innerText).toLowerCase();
+    const rowCat = (row.getAttribute('data-category') || '').toLowerCase().trim();
+    const rowType = (row.getAttribute('data-type') || '').toLowerCase().trim();
+    const rowUser = (row.getAttribute('data-user') || '').toLowerCase().trim();
+
+    let match = true;
+    if (searchVal && rowText.indexOf(searchVal) === -1) match = false;
+    if (catVal && rowCat !== catVal) match = false;
+    if (typeVal && rowType !== typeVal) match = false;
+    if (userVal && rowUser !== userVal) match = false;
+
+    if (match) {{
+      row.style.display = '';
+      visibleCount++;
+      const amt = parseInt(row.getAttribute('data-amount') || '0', 10);
+      if (!isNaN(amt)) totalVisibleAmount += amt;
+    }} else {{
+      row.style.display = 'none';
+    }}
   }}
+
+  if (countSummary) {{
+    if (isFiltering) {{
+      let filterDesc = [];
+      if (catVal && catSelect) filterDesc.push('Kategori: ' + (catSelect.options[catSelect.selectedIndex].text.replace(/^[^a-zA-Z0-9 ]+/, '').trim()));
+      if (typeVal) filterDesc.push(typeVal === 'income' ? 'Pemasukan' : 'Pengeluaran');
+      if (userVal && userSelect) filterDesc.push(userSelect.options[userSelect.selectedIndex].text.replace(/^[^a-zA-Z0-9 ]+/, '').trim());
+      if (searchVal) filterDesc.push('"' + searchVal + '"');
+      countSummary.innerHTML = `Menampilkan <strong>${visibleCount}</strong> dari ${tr.length} mutasi (${filterDesc.join(', ')}) ·· Subtotal: <strong>Rp ${totalVisibleAmount.toLocaleString('id-ID')}</strong>`;
+    }} else {{
+      countSummary.textContent = `Menampilkan ${tr.length} mutasi catatan transaksi terverifikasi`;
+    }}
+  }}
+
+  let emptyRow = document.getElementById('tableFilteredEmptyRow');
+  if (visibleCount === 0 && tr.length > 0) {{
+    if (!emptyRow) {{
+      emptyRow = document.createElement('tr');
+      emptyRow.id = 'tableFilteredEmptyRow';
+      emptyRow.innerHTML = '<td colspan="8" style="text-align:center; padding: 32px; color: var(--ink-muted);">Tidak ada transaksi yang cocok dengan filter yang dipilih. <button class="btn btn-ghost btn-sm" onclick="resetTableFilters()" style="margin-left: 8px;">Reset Filter</button></td>';
+      const tbody = table.querySelector('tbody');
+      if (tbody) tbody.appendChild(emptyRow);
+    }}
+    emptyRow.style.display = '';
+  }} else if (emptyRow) {{
+    emptyRow.style.display = 'none';
+  }}
+}}
+
+function setQuickCategory(catName) {{
+  const catSelect = document.getElementById('tableCategoryFilter');
+  if (catSelect) {{
+    catSelect.value = catName;
+    filterTableLive();
+  }}
+}}
+
+function resetTableFilters() {{
+  const searchInput = document.getElementById('tableQuickSearch');
+  const catSelect = document.getElementById('tableCategoryFilter');
+  const typeSelect = document.getElementById('tableTypeFilter');
+  const userSelect = document.getElementById('tableUserFilter');
+  if (searchInput) searchInput.value = '';
+  if (catSelect) catSelect.value = '';
+  if (typeSelect) typeSelect.value = '';
+  if (userSelect) userSelect.value = '';
+  filterTableLive();
 }}
 
 window.addEventListener('DOMContentLoaded', () => {{

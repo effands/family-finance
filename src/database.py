@@ -124,7 +124,25 @@ class Database:
                 PRAGMA journal_mode=WAL;
             """)
             for x in default_categories():
-                c.execute("INSERT OR IGNORE INTO categories VALUES (?,?,?,?)", (x.name, ",".join(x.keywords), x.emoji, x.type))
+                existing = c.execute("SELECT keywords FROM categories WHERE name=?", (x.name,)).fetchone()
+                if existing:
+                    current_kw = [k.strip() for k in existing["keywords"].split(",") if k.strip()]
+                    merged_kw = list(dict.fromkeys(current_kw + x.keywords))
+                    c.execute("UPDATE categories SET keywords=?, emoji=?, type=? WHERE name=?", (",".join(merged_kw), x.emoji, x.type, x.name))
+                else:
+                    c.execute("INSERT INTO categories VALUES (?,?,?,?)", (x.name, ",".join(x.keywords), x.emoji, x.type))
+            cats = [Category(r["name"], [k for k in r["keywords"].split(",") if k], r["emoji"], r["type"]) for r in c.execute("SELECT * FROM categories WHERE name != 'Lain-lain'").fetchall()]
+            for r in c.execute("SELECT id, description FROM transactions WHERE category='Lain-lain'").fetchall():
+                for cat in cats:
+                    if any(kw.casefold() in r["description"].casefold() for kw in cat.keywords):
+                        c.execute("UPDATE transactions SET category=? WHERE id=?", (cat.name, r["id"]))
+                        break
+            for r in c.execute("SELECT id, description FROM ledger_operations WHERE category='Lain-lain'").fetchall():
+                for cat in cats:
+                    if any(kw.casefold() in r["description"].casefold() for kw in cat.keywords):
+                        c.execute("UPDATE ledger_operations SET category=? WHERE id=?", (cat.name, r["id"]))
+                        c.execute("UPDATE ledger_entries SET category=? WHERE operation_id=?", (cat.name, r["id"]))
+                        break
             columns = {row[1] for row in c.execute("PRAGMA table_info(financial_accounts)").fetchall()}
             if "creation_key" not in columns:
                 c.execute("ALTER TABLE financial_accounts ADD COLUMN creation_key TEXT")
