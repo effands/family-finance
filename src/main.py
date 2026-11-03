@@ -104,7 +104,7 @@ def get_command_inline_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("📊 Rekap Bulan Ini", callback_data="cb:rekap:bulan"),
-            InlineKeyboardButton("💰 Saldo Kas", callback_data="cb:rekap:bulan"),
+            InlineKeyboardButton("💰 Saldo Kas", callback_data="cb:saldo"),
         ],
         [
             InlineKeyboardButton("📈 Total Pemasukan", callback_data="cb:income:bulan"),
@@ -216,8 +216,10 @@ async def menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(reply.keyboard["inline_keyboard"]),
         )
-    if text in ("📊 Rekap Bulan Ini", "💰 Saldo Kas"):
+    if text == "📊 Rekap Bulan Ini":
         return await report_cmd(update, context, "bulan")
+    if text == "💰 Saldo Kas":
+        return await cash_balance_cmd(update, context)
     if text == "📈 Total Pemasukan":
         return await income_cmd(update, context)
     if text == "📉 Total Pengeluaran":
@@ -416,6 +418,22 @@ async def expense_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = context.application.bot_data["db"]
     chat_id = str(update.effective_chat.id)
     text = build_expense_summary(db, chat_id, datetime.now(), "bulan")
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+
+async def cash_balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    s = context.application.bot_data["settings"]
+    if not allowed(update, s):
+        return
+    chat_id = str(update.effective_chat.id)
+    summary = WealthLedger(context.application.bot_data["db"]).get_wealth_summary(chat_id)
+    text = (
+        "🏦 *SALDO KAS AKTUAL*\n\n"
+        f"• Total saldo: *{format_rupiah(summary.total_wealth)}*\n"
+        f"• Saldo likuid: *{format_rupiah(summary.liquid_assets)}*\n"
+        f"• Cash: *{format_rupiah(summary.cash)}*\n"
+        f"• Investasi: *{format_rupiah(summary.investments)}*"
+    )
     await update.message.reply_text(text, parse_mode="Markdown")
 
 
@@ -1101,6 +1119,16 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "cb:rekap:bulan":
         text = build_report(db, "bulan", chat_id, now)
         return await query.message.reply_text(text, parse_mode="Markdown")
+    if data == "cb:saldo":
+        summary = WealthLedger(db).get_wealth_summary(chat_id)
+        text = (
+            "🏦 *SALDO KAS AKTUAL*\n\n"
+            f"• Total saldo: *{format_rupiah(summary.total_wealth)}*\n"
+            f"• Saldo likuid: *{format_rupiah(summary.liquid_assets)}*\n"
+            f"• Cash: *{format_rupiah(summary.cash)}*\n"
+            f"• Investasi: *{format_rupiah(summary.investments)}*"
+        )
+        return await query.message.reply_text(text, parse_mode="Markdown")
     if data == "cb:rekap:minggu":
         text = build_report(db, "minggu", chat_id, now)
         return await query.message.reply_text(text, parse_mode="Markdown")
@@ -1165,7 +1193,8 @@ def build_app():
     app.add_handler(CommandHandler(["start", "menu", "bantuan"], start_cmd))
     app.add_handler(CommandHandler(["pemasukan", "masuk"], income_cmd))
     app.add_handler(CommandHandler(["pengeluaran", "keluar"], expense_cmd))
-    app.add_handler(CommandHandler(["rekap", "saldo"], lambda u, c: report_cmd(u, c, "bulan")))
+    app.add_handler(CommandHandler("rekap", lambda u, c: report_cmd(u, c, "bulan")))
+    app.add_handler(CommandHandler("saldo", cash_balance_cmd))
     app.add_handler(CommandHandler(["laporan", "hari", "minggu", "bulan", "tahun", "all"], report_cmd))
     app.add_handler(CommandHandler("undo", undo_cmd))
     app.add_handler(CommandHandler("hapus", delete_cmd))
