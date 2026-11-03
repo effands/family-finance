@@ -3595,6 +3595,8 @@ def application(environ, start_response):
                     _send_telegram(chat_id, build_report(db, "bulan", chat_id, now))
                 elif cq_data == "cb:rekap:minggu":
                     _send_telegram(chat_id, build_report(db, "minggu", chat_id, now))
+                elif cq_data == "cb:rekap:hari":
+                    _send_telegram(chat_id, build_report(db, "hari", chat_id, now))
                 elif cq_data == "cb:income:bulan":
                     _send_telegram(chat_id, build_income_summary(db, chat_id, now, "bulan"))
                 elif cq_data == "cb:expense:bulan":
@@ -3681,7 +3683,7 @@ def application(environ, start_response):
             # Periodic Report Command
             elif text.startswith(("/laporan", "/hari", "/minggu", "/bulan", "/tahun", "/all", "/semua")):
                 parts = text.split()
-                cmd = parts[0].lstrip("/")
+                cmd = parts[0].lstrip("/").split("@", 1)[0].lower()
                 kind = parts[1] if len(parts) > 1 else (cmd if cmd in ("hari", "minggu", "bulan", "tahun", "all") else "bulan")
                 _send_telegram(chat_id, build_report(db, kind, chat_id, now))
 
