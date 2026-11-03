@@ -422,7 +422,11 @@ async def report_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE, forced:
     s = context.application.bot_data["settings"]
     if not allowed(update, s):
         return
-    kind = forced or " ".join(context.args or ["bulan"])
+    command_name = ""
+    message_text = update.effective_message.text if update.effective_message else ""
+    if message_text.startswith("/"):
+        command_name = message_text.split()[0].lstrip("/").split("@", 1)[0].lower()
+    kind = forced or " ".join(context.args or [command_name or "bulan"])
     chat_id = str(update.effective_chat.id)
     user_id = str(update.effective_user.id) if "saya" in (context.args or []) else None
     kind = kind.replace(" saya", "").strip()
