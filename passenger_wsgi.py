@@ -2829,9 +2829,6 @@ def _dashboard_response(environ, start_response):
     </div>
   </div>
 
-  <!-- Advanced Filters Panel -->
-  {filter_form_html}
-
   <!-- Executive Financial KPI Metric Cards -->
   <section class="metric-grid">
     <div class="metric-card card-income">
@@ -2898,6 +2895,9 @@ def _dashboard_response(environ, start_response):
       </div>
     </div>
   </section>
+
+  <!-- Advanced Filters Panel -->
+  {filter_form_html}
 
   <!-- Transaction Data Ledger Panel (Moved directly below summary metrics for quick access) -->
   <section class="panel ledger-panel">
