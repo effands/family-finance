@@ -760,22 +760,9 @@ a.brand-lockup:hover .brand-title {
 
 .filters-form {
   display: grid;
-  grid-template-columns: 1.15fr 1.15fr 1fr 1fr;
-  gap: 12px;
+  grid-template-columns: 1.05fr 1.05fr .9fr .9fr 1.45fr 1fr auto;
+  gap: 10px;
   align-items: end;
-}
-
-.filters-form .form-group:nth-of-type(5) {
-  grid-column: span 2;
-}
-
-.filters-form .form-group:nth-of-type(6) {
-  grid-column: span 1;
-}
-
-.filters-form .filter-btn-group {
-  grid-column: span 1;
-  justify-content: flex-start;
 }
 
 .form-group {
@@ -1453,13 +1440,7 @@ a.brand-lockup:hover .brand-title {
     grid-template-columns: 1fr;
   }
   .filters-form {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  .filters-form .form-group:nth-of-type(5),
-  .filters-form .form-group:nth-of-type(6),
-  .filters-form .filter-btn-group {
-    grid-column: span 1;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
@@ -1498,12 +1479,6 @@ a.brand-lockup:hover .brand-title {
   }
   .filters-form {
     grid-template-columns: 1fr;
-  }
-
-  .filters-form .form-group:nth-of-type(5),
-  .filters-form .form-group:nth-of-type(6),
-  .filters-form .filter-btn-group {
-    grid-column: span 1;
   }
   .period-nav-wrapper {
     flex-direction: column;
