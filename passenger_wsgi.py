@@ -311,8 +311,10 @@ def _auth_page(error=""):
 
 def _period_bounds(query):
     today = date.today()
-    period = query.get("period", ["month"])[0]
-    if period == "week":
+    period = query.get("period", ["today"])[0]
+    if period == "today":
+        start = end = today
+    elif period == "week":
         start = today - timedelta(days=today.weekday())
         end = start + timedelta(days=6)
     elif period == "year":
@@ -329,7 +331,7 @@ def _period_bounds(query):
     else:
         start = today.replace(day=1)
         end = (start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
-        period = "month"
+        period = "today"
     if start and end and start > end:
         raise ValueError("Tanggal mulai tidak boleh melewati tanggal akhir.")
     return start, end, period
@@ -2438,7 +2440,7 @@ def _dashboard_response(environ, start_response):
     try:
         filters, period = _filters(query, chat_id)
     except ValueError as exc:
-        filters, period = TransactionFilters(chat_id), "month"
+        filters, period = TransactionFilters(chat_id), "today"
 
     # Database produksi yang dibuat sebelum Wealth Center mungkin belum memiliki
     # seluruh tabel ledger. Dashboard legacy tetap harus bisa dibuka sambil
@@ -2587,6 +2589,7 @@ def _dashboard_response(environ, start_response):
 
     # Build Period Tab Links
     period_defs = [
+        ("today", "Hari Ini"),
         ("week", "Pekan Ini"),
         ("month", "Bulan Ini"),
         ("year", "Tahun Ini"),
