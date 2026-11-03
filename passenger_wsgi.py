@@ -2733,7 +2733,15 @@ def _dashboard_response(environ, start_response):
 
     <div class="form-group">
       <label for="f-q">Pencarian Kata Kunci</label>
-      <input class="form-control" id="f-q" name="q" value="{html.escape(filters.search or '')}" placeholder="Cari deskripsi, kategori, nama...">
+      <input class="form-control" id="f-q" name="q" value="{html.escape(filters.search or '')}" placeholder="Cari deskripsi, kategori, nama..." onkeyup="filterTableLive()">
+    </div>
+
+    <div class="form-group">
+      <label for="tableUserFilter">Pencatat</label>
+      <select class="form-control" id="tableUserFilter" onchange="filterTableLive()" title="Filter Pencatat">
+        <option value="">Semua Pencatat</option>
+        {user_filter_options}
+      </select>
     </div>
 
     <div class="filter-btn-group">
@@ -2742,6 +2750,9 @@ def _dashboard_response(environ, start_response):
       </button>
       <a class="btn btn-secondary" href="/keuangan/dashboard?period={period}" title="Atur Ulang Filter">
         {_svg_icon("refresh")}
+      </a>
+      <a class="btn btn-ghost" href="/keuangan/excel?{export_q}" title="Buka tampilan penuh">
+        {_svg_icon("table")} Tampilan Penuh
       </a>
     </div>
   </form>
@@ -2890,36 +2901,6 @@ def _dashboard_response(environ, start_response):
 
   <!-- Transaction Data Ledger Panel (Moved directly below summary metrics for quick access) -->
   <section class="panel ledger-panel">
-    <div class="panel-header ledger-panel-header">
-      <div class="ledger-toolbar">
-        <div class="ledger-filter-group">
-          <select class="form-control form-control-sm" id="tableCategoryFilter" onchange="filterTableLive()" title="Filter Kategori">
-            <option value="">🏷️ Semua Kategori</option>
-            {category_filter_options}
-          </select>
-          <select class="form-control form-control-sm" id="tableTypeFilter" onchange="filterTableLive()" title="Filter Jenis">
-            <option value="">💳 Semua Jenis</option>
-            <option value="expense">🔴 Pengeluaran</option>
-            <option value="income">🟢 Pemasukan</option>
-          </select>
-          <select class="form-control form-control-sm" id="tableUserFilter" onchange="filterTableLive()" title="Filter Pencatat">
-            <option value="">👥 Semua Pencatat</option>
-            {user_filter_options}
-          </select>
-        </div>
-        <div class="ledger-search-box">
-          <span class="search-icon">{_svg_icon("search")}</span>
-          <input class="form-control" type="text" id="tableQuickSearch" placeholder="Pencarian cepat di tabel..." onkeyup="filterTableLive()">
-        </div>
-        <button class="btn btn-ghost btn-sm" id="tableResetBtn" type="button" onclick="resetTableFilters()" title="Reset Filter" style="display: none; height: 38px;">
-          ✕ Reset
-        </button>
-        <a class="btn btn-secondary btn-sm" href="/keuangan/excel?{export_q}" style="height: 38px;">
-          {_svg_icon("table")} Tampilan Penuh
-        </a>
-      </div>
-    </div>
-
     <div class="quick-category-pills" id="quickCategoryPills" style="display:flex;align-items:center;gap:8px;overflow-x:auto;padding:4px 0 14px;margin-bottom:8px;">
       <button type="button" class="category-pill active" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;" onclick="setQuickCategory('')" data-category="">Semua <span class="pill-badge" style="display:inline-block;padding:1px 6px;border-radius:999px;background:rgba(255,255,255,.25);color:#fff;font-size:11px;font-weight:700;">{len(rows)}</span></button>
       {category_pills_html}
@@ -3249,9 +3230,9 @@ function updateFileLabel(input) {{
 }}
 
 function filterTableLive() {{
-  const searchInput = document.getElementById('tableQuickSearch');
-  const catSelect = document.getElementById('tableCategoryFilter');
-  const typeSelect = document.getElementById('tableTypeFilter');
+  const searchInput = document.getElementById('f-q');
+  const catSelect = document.getElementById('f-cat');
+  const typeSelect = document.getElementById('f-type');
   const userSelect = document.getElementById('tableUserFilter');
   const resetBtn = document.getElementById('tableResetBtn');
   const countSummary = document.getElementById('tableCountSummary');
@@ -3329,7 +3310,7 @@ function filterTableLive() {{
 }}
 
 function setQuickCategory(catName) {{
-  const catSelect = document.getElementById('tableCategoryFilter');
+  const catSelect = document.getElementById('f-cat');
   if (catSelect) {{
     catSelect.value = catName;
     filterTableLive();
@@ -3337,9 +3318,9 @@ function setQuickCategory(catName) {{
 }}
 
 function resetTableFilters() {{
-  const searchInput = document.getElementById('tableQuickSearch');
-  const catSelect = document.getElementById('tableCategoryFilter');
-  const typeSelect = document.getElementById('tableTypeFilter');
+  const searchInput = document.getElementById('f-q');
+  const catSelect = document.getElementById('f-cat');
+  const typeSelect = document.getElementById('f-type');
   const userSelect = document.getElementById('tableUserFilter');
   if (searchInput) searchInput.value = '';
   if (catSelect) catSelect.value = '';
