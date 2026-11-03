@@ -760,9 +760,22 @@ a.brand-lockup:hover .brand-title {
 
 .filters-form {
   display: grid;
-  grid-template-columns: 1fr 1.15fr 1fr 1fr 1.45fr 1fr auto;
+  grid-template-columns: 1.15fr 1.15fr 1fr 1fr;
   gap: 12px;
   align-items: end;
+}
+
+.filters-form .form-group:nth-of-type(5) {
+  grid-column: span 2;
+}
+
+.filters-form .form-group:nth-of-type(6) {
+  grid-column: span 1;
+}
+
+.filters-form .filter-btn-group {
+  grid-column: span 1;
+  justify-content: flex-start;
 }
 
 .form-group {
@@ -1442,6 +1455,12 @@ a.brand-lockup:hover .brand-title {
   .filters-form {
     grid-template-columns: repeat(3, 1fr);
   }
+
+  .filters-form .form-group:nth-of-type(5),
+  .filters-form .form-group:nth-of-type(6),
+  .filters-form .filter-btn-group {
+    grid-column: span 1;
+  }
 }
 
 @media (max-width: 820px) {
@@ -1479,6 +1498,12 @@ a.brand-lockup:hover .brand-title {
   }
   .filters-form {
     grid-template-columns: 1fr;
+  }
+
+  .filters-form .form-group:nth-of-type(5),
+  .filters-form .form-group:nth-of-type(6),
+  .filters-form .filter-btn-group {
+    grid-column: span 1;
   }
   .period-nav-wrapper {
     flex-direction: column;
