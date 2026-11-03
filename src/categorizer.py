@@ -22,7 +22,7 @@ def default_categories() -> list[Category]:
         Category("Transportasi", ["bensin", "bbm", "parkir", "tol", "grab", "gojek", "ojek", "ongkos", "kereta", "krl", "mrt", "transjakarta", "taksi"], "⛽", "expense"),
         Category("Makanan & Minuman", ["makan", "minum", "jajan", "kopi", "resto", "buah", "sayur", "bakso", "warteg", "gofood", "grabfood", "shopeefood", "snack"], "🍔", "expense"),
         Category("Belanja", ["baju", "sepatu", "belanja bulanan", "indomaret", "alfamart", "supermarket", "pasar", "sembako", "dapur"], "👕", "expense"),
-        Category("Rumah & Utilitas", ["listrik", "air", "gas", "internet", "wifi", "indihome", "pln", "pdam", "sewa", "kontrakan", "kebersihan", "iuran rt", "keamanan", "sampah"], "🏠", "expense"),
+        Category("Rumah & Utilitas", ["listrik", "air", "gas", "internet", "wifi", "indihome", "pln", "pdam", "sewa", "kontrakan", "kebersihan", "iuran rt", "keamanan", "sampah", "telkom", "biznet", "firstmedia", "first media", "myrepublic", "orbit", "cbn", "iconnet"], "🏠", "expense"),
         Category("Pemasukan", ["gaji", "bonus", "thr", "transferan", "jual", "cashback", "refund", "untung", "payroll", "upah"], "💰", "income"),
         Category("Pendapatan Sampingan", ["side job", "freelance", "jualan", "dagang", "dividen", "komisi", "affiliate", "royalti", "laba", "honor", "proyek", "tips"], "💼", "income"),
         Category("Lain-lain", [], "🎁", "both"),

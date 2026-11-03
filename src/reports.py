@@ -92,6 +92,15 @@ def build_expense_summary(db: Database, chat_id: str, now: datetime, kind: str =
         "━━━━━━━━━━━━━━━━━━━━━━",
     ]
 
+    if rows:
+        out.append("*Riwayat Pengeluaran Terakhir:*")
+        for x in rows[:7]:
+            user_label = f"@{x.username.lstrip('@')}" if x.username else "User"
+            out.append(f"• `{format_date_id(x.transaction_date)}`: {x.description} — *{format_rupiah(x.amount)}* ({user_label})")
+        if len(rows) > 7:
+            out.append(f"_... dan {len(rows) - 7} transaksi lainnya di dasbor web._")
+        out.append("━━━━━━━━━━━━━━━━━━━━━━")
+
     if cats and total_expense > 0:
         out.append("*Distribusi Alokasi Belanja:*")
         for cat_name, amt in sorted(cats.items(), key=lambda z: -z[1]):
