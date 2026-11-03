@@ -250,7 +250,7 @@ def _html_page(title, body, status="200 OK", headers=None):
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/keuangan/static/app.css?v=table-sortable">
+  <link rel="stylesheet" href="/keuangan/static/app.css?v=category-width">
 </head>
 <body>
   {body}
@@ -2895,7 +2895,7 @@ def _dashboard_response(environ, start_response):
             <th class="sortable" data-sort-key="id" onclick="sortTableBy('id')" style="width: 70px;">ID <span class="sort-indicator"></span></th>
             <th class="sortable" data-sort-key="date" onclick="sortTableBy('date')" style="width: 120px;">Tanggal <span class="sort-indicator"></span></th>
             <th class="sortable" data-sort-key="type" onclick="sortTableBy('type')" style="width: 130px;">Jenis <span class="sort-indicator"></span></th>
-            <th class="sortable" data-sort-key="category" onclick="sortTableBy('category')" style="width: 150px;">Kategori <span class="sort-indicator"></span></th>
+            <th class="sortable" data-sort-key="category" onclick="sortTableBy('category')" style="width: 185px;">Kategori <span class="sort-indicator"></span></th>
             <th class="sortable" data-sort-key="description" onclick="sortTableBy('description')">Deskripsi <span class="sort-indicator"></span></th>
             <th class="sortable" data-sort-key="amount" onclick="sortTableBy('amount')" style="width: 160px;">Nominal <span class="sort-indicator"></span></th>
             <th class="sortable" data-sort-key="user" onclick="sortTableBy('user')" style="width: 150px;">Pencatat <span class="sort-indicator"></span></th>

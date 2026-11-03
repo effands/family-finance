@@ -784,6 +784,10 @@ a.brand-lockup:hover .brand-title {
   background: rgba(37, 99, 235, .06);
 }
 
+.data-table td:nth-child(4) {
+  white-space: nowrap;
+}
+
 .sort-indicator {
   color: var(--brand-primary);
   font-weight: 800;
