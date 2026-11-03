@@ -3304,9 +3304,9 @@ function filterTableLive() {{
       if (typeVal) filterDesc.push(typeVal === 'income' ? 'Pemasukan' : 'Pengeluaran');
       if (userVal && userSelect) filterDesc.push(userSelect.options[userSelect.selectedIndex].text.replace(/^[^a-zA-Z0-9 ]+/, '').trim());
       if (searchVal) filterDesc.push('"' + searchVal + '"');
-      countSummary.innerHTML = `Menampilkan <strong>${visibleCount}</strong> dari ${tr.length} mutasi (${filterDesc.join(', ')}) ·· Subtotal: <strong>Rp ${totalVisibleAmount.toLocaleString('id-ID')}</strong>`;
+      countSummary.innerHTML = `Menampilkan <strong>${{visibleCount}}</strong> dari ${{tr.length}} mutasi (${{filterDesc.join(', ')}}) ·· Subtotal: <strong>Rp ${{totalVisibleAmount.toLocaleString('id-ID')}}</strong>`;
     }} else {{
-      countSummary.textContent = `Menampilkan ${tr.length} mutasi catatan transaksi terverifikasi`;
+      countSummary.textContent = `Menampilkan ${{tr.length}} mutasi catatan transaksi terverifikasi`;
     }}
   }}
 
