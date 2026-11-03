@@ -34,8 +34,9 @@ MENU_KEYBOARD = ReplyKeyboardMarkup(
     [
         ["📊 Rekap Bulan Ini", "💰 Saldo Kas"],
         ["📈 Total Pemasukan", "📉 Total Pengeluaran"],
-        ["📅 Rekap Pekan Ini", "🏷️ Kategori"],
-        ["↩️ Undo Terakhir", "❓ Panduan & Menu"],
+        ["📅 Rekap Hari Ini", "📅 Rekap Pekan Ini"],
+        ["🏷️ Kategori", "↩️ Undo Terakhir"],
+        ["❓ Panduan & Menu"],
     ],
     resize_keyboard=True,
 )
@@ -110,13 +111,14 @@ def get_command_inline_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("📉 Total Pengeluaran", callback_data="cb:expense:bulan"),
         ],
         [
+            InlineKeyboardButton("📅 Rekap Hari Ini", callback_data="cb:rekap:hari"),
             InlineKeyboardButton("📅 Rekap Pekan Ini", callback_data="cb:rekap:minggu"),
-            InlineKeyboardButton("🏷️ Daftar Kategori", callback_data="cb:kategori"),
         ],
         [
+            InlineKeyboardButton("🏷️ Daftar Kategori", callback_data="cb:kategori"),
             InlineKeyboardButton("↩️ Undo Catatan Terakhir", callback_data="cb:undo:last"),
-            InlineKeyboardButton("❓ Panduan Bantuan", callback_data="cb:bantuan"),
         ],
+        [InlineKeyboardButton("❓ Panduan Bantuan", callback_data="cb:bantuan")],
     ])
 
 
@@ -221,6 +223,8 @@ async def menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await expense_cmd(update, context)
     if text == "📅 Rekap Pekan Ini":
         return await report_cmd(update, context, "minggu")
+    if text == "📅 Rekap Hari Ini":
+        return await report_cmd(update, context, "hari")
     if text == "🏷️ Kategori":
         return await categories_cmd(update, context)
     if text == "↩️ Undo Terakhir":
@@ -1094,6 +1098,9 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await query.message.reply_text(text, parse_mode="Markdown")
     if data == "cb:rekap:minggu":
         text = build_report(db, "minggu", chat_id, now)
+        return await query.message.reply_text(text, parse_mode="Markdown")
+    if data == "cb:rekap:hari":
+        text = build_report(db, "hari", chat_id, now)
         return await query.message.reply_text(text, parse_mode="Markdown")
     if data == "cb:income:bulan":
         text = build_income_summary(db, chat_id, now, "bulan")
