@@ -1,3 +1,4 @@
+from datetime import date
 from types import SimpleNamespace
 
 import passenger_wsgi
@@ -30,4 +31,4 @@ def test_git_update_uses_current_branch_and_ff_only(monkeypatch, tmp_path):
     assert "origin" in calls[2] and "codex/wealth-ledger" in calls[2]
     assert "--ff-only" in calls[3]
     assert "codex/wealth-ledger" in calls[3]
-    assert backup.endswith(".pre-git-update-2026-11-01")
+    assert backup.endswith(f".pre-git-update-{date.today().isoformat()}")

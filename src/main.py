@@ -245,38 +245,48 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, te
     text = text_override if text_override is not None else update.message.text
     db: Database = context.application.bot_data["db"]
     ai_category = None
-    should_use_ai = bool(s.gemini_api_keys and len(text or "") >= 80)
-    try:
-        if should_use_ai:
-            raise ParseError("Pesan panjang akan dipahami oleh Gemini")
-        parsed = parse_message(text, now, s.timezone)
-    except ParseError as e:
-        # Natural-language fallback/preferred path for longer messages.
-        if (len(text or "") < 45 and not should_use_ai) or not s.gemini_api_keys:
-            try:
-                parsed = parse_message(text, now, s.timezone)
-            except ParseError:
-                return await reply.reply_text(f"❓ {e}")
-        else:
-            try:
-                ai = await asyncio.to_thread(
-                    interpret_text, text, [c.name for c in db.list_categories()],
-                    s.gemini_api_keys, s.gemini_model, context.application.bot_data["gemini_pool"]
-                )
-                parsed = type("AIParsed", (), {
-                    "type": ai["type"], "amount": ai["amount"], "description": ai["description"],
-                    "transaction_date": date.fromisoformat(ai["date"]),
-                })()
-                ai_category = ai
-            except Exception:
-                if should_use_ai:
-                    # A valid short-format interpretation is safer than rejecting a transaction.
-                    try:
-                        parsed = parse_message(text, now, s.timezone)
-                    except ParseError:
-                        return await reply.reply_text(f"❓ {e}\nCoba tulis nominal dengan format seperti `makan 25rb`, atau pastikan Gemini aktif.", parse_mode="Markdown")
-                else:
+    lowered_text = (text or "").lower()
+    should_use_ai = bool(
+        s.gemini_api_keys
+        and (
+            len(text or "") >= 45
+            or any(w in lowered_text for w in ("sebesar", "sejumlah", "pelanggan", "tagihan", "nomor", "nomer", "rekening", "kemarin", "lalu", "untuk", "transfer ke"))
+        )
+    )
+    parsed = None
+    if should_use_ai:
+        try:
+            ai = await asyncio.to_thread(
+                interpret_text, text, [c.name for c in db.list_categories()],
+                s.gemini_api_keys, s.gemini_model, context.application.bot_data["gemini_pool"]
+            )
+            parsed = type("AIParsed", (), {
+                "type": ai["type"], "amount": ai["amount"], "description": ai["description"],
+                "transaction_date": date.fromisoformat(ai["date"]),
+            })()
+            ai_category = ai
+        except Exception:
+            parsed = None
+
+    if parsed is None:
+        try:
+            parsed = parse_message(text, now, s.timezone)
+        except ParseError as e:
+            if s.gemini_api_keys and not should_use_ai:
+                try:
+                    ai = await asyncio.to_thread(
+                        interpret_text, text, [c.name for c in db.list_categories()],
+                        s.gemini_api_keys, s.gemini_model, context.application.bot_data["gemini_pool"]
+                    )
+                    parsed = type("AIParsed", (), {
+                        "type": ai["type"], "amount": ai["amount"], "description": ai["description"],
+                        "transaction_date": date.fromisoformat(ai["date"]),
+                    })()
+                    ai_category = ai
+                except Exception:
                     return await reply.reply_text(f"❓ {e}\nCoba tulis nominal dengan format seperti `makan 25rb`, atau pastikan Gemini aktif.", parse_mode="Markdown")
+            else:
+                return await reply.reply_text(f"❓ {e}\nCoba tulis nominal dengan format seperti `makan 25rb`, atau pastikan Gemini aktif.", parse_mode="Markdown")
     if ai_category:
         existing = {c.name.casefold(): c for c in db.list_categories()}
         safe_name = " ".join(ai_category["category"].split())[:80]
@@ -366,7 +376,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, te
     m_start = now.date().replace(day=1)
     m_end = (m_start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
     from .models import TransactionFilters
-    m_rows = db.list_transactions(TransactionFilters(chat_id, m_start, m_end))
+    m_rows = db.list_transactions_with_ledger(TransactionFilters(chat_id, m_start, m_end))
     m_inc = sum(r.amount for r in m_rows if r.type == "income")
     m_exp = sum(r.amount for r in m_rows if r.type == "expense")
     m_bal = m_inc - m_exp
@@ -596,7 +606,7 @@ async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     db: Database = context.application.bot_data["db"]
     chat_id = str(update.effective_chat.id)
-    tx_count = len(db.list_transactions(TransactionFilters(chat_id)))
+    tx_count = len(db.list_transactions_with_ledger(TransactionFilters(chat_id)))
     acc_count = len(db.list_accounts(chat_id))
     summary = WealthLedger(db).get_wealth_summary(chat_id)
     text = (

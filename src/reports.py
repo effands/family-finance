@@ -42,7 +42,8 @@ def period(kind: str, now: datetime):
 
 def build_income_summary(db: Database, chat_id: str, now: datetime, kind: str = "bulan") -> str:
     start, end, title = period(kind, now)
-    rows = db.list_transactions(TransactionFilters(chat_id, start, end, transaction_type="income", sort_by="transaction_date", sort_dir="desc"))
+    fetch = getattr(db, "list_transactions_with_ledger", db.list_transactions)
+    rows = fetch(TransactionFilters(chat_id, start, end, transaction_type="income", sort_by="transaction_date", sort_dir="desc"))
     total_income = sum(x.amount for x in rows)
 
     out = [
@@ -71,7 +72,8 @@ def build_income_summary(db: Database, chat_id: str, now: datetime, kind: str = 
 
 def build_expense_summary(db: Database, chat_id: str, now: datetime, kind: str = "bulan") -> str:
     start, end, title = period(kind, now)
-    rows = db.list_transactions(TransactionFilters(chat_id, start, end, transaction_type="expense", sort_by="transaction_date", sort_dir="desc"))
+    fetch = getattr(db, "list_transactions_with_ledger", db.list_transactions)
+    rows = fetch(TransactionFilters(chat_id, start, end, transaction_type="expense", sort_by="transaction_date", sort_dir="desc"))
     total_expense = sum(x.amount for x in rows)
 
     cats = {}
@@ -114,7 +116,8 @@ def build_expense_summary(db: Database, chat_id: str, now: datetime, kind: str =
 
 def build_report(db: Database, kind: str, chat_id: str, now: datetime, user_id=None) -> str:
     start, end, title = period(kind, now)
-    rows = db.list_transactions(TransactionFilters(chat_id, start, end, user_id))
+    fetch = getattr(db, "list_transactions_with_ledger", db.list_transactions)
+    rows = fetch(TransactionFilters(chat_id, start, end, user_id))
     income = sum(x.amount for x in rows if x.type == "income")
     expense = sum(x.amount for x in rows if x.type == "expense")
     balance = income - expense

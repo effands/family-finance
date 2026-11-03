@@ -51,3 +51,19 @@ def test_missing_or_zero_amount_is_clarification():
 
 def test_income_wins_when_explicit_income_and_expense_words_mix():
     assert parse_message("gaji masuk lalu bayar 8jt", NOW, "Asia/Jakarta").type == "income"
+
+
+def test_customer_number_with_explicit_amount():
+    res = parse_message("Bayar indihome nomer pelanggan 152702245514 sebesar 330.225", NOW, "Asia/Jakarta")
+    assert res.amount == 330225
+    assert res.type == "expense"
+    assert "152702245514" in res.description
+    assert "Bayar indihome" in res.description
+
+    res2 = parse_message("bayar listrik no meter 12345678901 rp 150.000", NOW, "Asia/Jakarta")
+    assert res2.amount == 150000
+    assert "12345678901" in res2.description
+
+    res3 = parse_message("transfer ke 081234567890 sejumlah 50rb", NOW, "Asia/Jakarta")
+    assert res3.amount == 50000
+

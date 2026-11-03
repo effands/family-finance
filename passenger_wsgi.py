@@ -1140,7 +1140,7 @@ def _render_backup_page(db: Database, chat_id: str, csrf_token: str, toast: str 
             )
     file_rows = "".join(files) or "<tr><td colspan='4' style='text-align:center; padding: 28px; color: var(--ink-muted);'>Belum ada backup lokal di vault server.</td></tr>"
 
-    tx_count = len(db.list_transactions(TransactionFilters(chat_id)))
+    tx_count = len(db.list_transactions_with_ledger(TransactionFilters(chat_id)))
     acc_count = len(db.list_accounts(chat_id))
 
     return f"""<main class='page-shell backup-center-page'>
@@ -3634,7 +3634,7 @@ def application(environ, start_response):
                 # Month balance calculation
                 m_start = now.date().replace(day=1)
                 m_end = (m_start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
-                m_rows = db.list_transactions(TransactionFilters(chat_id, m_start, m_end))
+                m_rows = db.list_transactions_with_ledger(TransactionFilters(chat_id, m_start, m_end))
                 m_inc = sum(r.amount for r in m_rows if r.type == "income")
                 m_exp = sum(r.amount for r in m_rows if r.type == "expense")
                 m_bal = m_inc - m_exp

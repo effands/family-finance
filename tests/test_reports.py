@@ -36,3 +36,35 @@ def test_income_and_expense_summaries(tmp_path):
     assert "Rp 450.000" in exp_rep
     assert "Makanan & Minuman" in exp_rep
     assert "ziqva.com" in exp_rep
+
+
+def test_reports_include_wealth_ledger_transactions(tmp_path):
+    from src.models import FinancialAccount
+    from src.wealth import WealthLedger
+
+    db = Database(str(tmp_path / "wealth_rep.db"))
+    db.initialize()
+    wl = WealthLedger(db)
+    acc = db.create_account(
+        FinancialAccount(
+            None, "c1", "Bank Jago", "bank", "Bank Jago", "Ayah", "12345", "IDR", 10000000, date(2026, 11, 1), True, ""
+        )
+    )
+    now = datetime(2026, 11, 3, 12, 0, 0)
+    wl.create_expense("c1", acc.id, 332642, "Bayar indihome Kantor", "Tagihan", date(2026, 11, 3), "u1", "effands")
+
+    exp_rep = build_expense_summary(db, "c1", now, "bulan")
+    assert "Rp 332.642" in exp_rep
+    assert "1 transaksi" in exp_rep
+    assert "Tagihan" in exp_rep
+    assert "@effands" in exp_rep
+
+    wl.create_income("c1", acc.id, 5000000, "Bonus Proyek", "Pemasukan", date(2026, 11, 3), "u1", "effands")
+    inc_rep = build_income_summary(db, "c1", now, "bulan")
+    assert "Rp 5.000.000" in inc_rep
+    assert "Bonus Proyek" in inc_rep
+
+    full_rep = build_report(db, "bulan", "c1", now)
+    assert "Rp 332.642" in full_rep
+    assert "Rp 5.000.000" in full_rep
+

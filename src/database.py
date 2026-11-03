@@ -299,6 +299,7 @@ class Database:
                 JOIN ledger_entries e ON e.operation_id=o.id
                 LEFT JOIN financial_accounts a ON a.id=e.account_id
                 WHERE o.chat_id=? AND o.operation_type IN ('income','expense')
+                  AND o.reversed_operation_id IS NULL
                   AND o.id NOT IN (SELECT operation_id FROM legacy_ledger_links WHERE chat_id=?)
                 GROUP BY o.id"""
         params = [f.chat_id, f.chat_id]
